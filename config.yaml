@@ -1,0 +1,30 @@
+llm:
+  provider: "claude"                    # claude | openai | ollama
+  model: "claude-sonnet-4-20250514"
+  api_key: "${ANTHROPIC_API_KEY}"
+  base_url: "http://ollama:11434"       # Only used when provider is "ollama"
+
+target:
+  ip: ""                                # Target IP (set before starting)
+
+attack_box:
+  host: ""                              # Attack/assessment box SSH host
+  user: "root"
+  key_path: "~/.ssh/id_rsa"
+  password: ""
+
+server:
+  host: "0.0.0.0"
+  port: 8080
+  domain: "4g3ntsm1th.d3vn0mi.com"
+
+auth:
+  jwt_secret: "${JWT_SECRET}"
+  access_token_expiry: 3600             # 1 hour
+  refresh_token_expiry: 604800          # 7 days
+  users_file: "data/users.json"
+
+agent:
+  max_iterations: 200
+  command_timeout: 120
+  phase_timeout: 1800                   # 30 min per phase

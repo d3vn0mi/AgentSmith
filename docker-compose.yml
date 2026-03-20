@@ -1,0 +1,47 @@
+services:
+  agentsmith:
+    build: .
+    container_name: agentsmith
+    env_file: .env
+    volumes:
+      - ./config.yaml:/app/config.yaml:ro
+      - ./data:/app/data
+      - ${SSH_KEY_DIR:-~/.ssh}:/root/.ssh:ro
+    networks:
+      - internal
+    restart: unless-stopped
+
+  caddy:
+    image: caddy:2-alpine
+    container_name: agentsmith-caddy
+    ports:
+      - "443:443"
+      - "80:80"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    networks:
+      - internal
+    depends_on:
+      - agentsmith
+    restart: unless-stopped
+
+  ollama:
+    image: ollama/ollama:latest
+    container_name: agentsmith-ollama
+    profiles: ["local-llm"]
+    volumes:
+      - ollama-data:/root/.ollama
+    networks:
+      - internal
+    restart: unless-stopped
+
+volumes:
+  caddy-data:
+  caddy-config:
+  ollama-data:
+
+networks:
+  internal:
+    driver: bridge
