@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AgentSmith - Puppet Master</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <div id="login-screen" class="login-container">
+        <div class="login-box">
+            <h1 class="login-title">AgentSmith</h1>
+            <p class="login-subtitle">Puppet Master Console</p>
+            <form id="login-form">
+                <input type="text" id="username" placeholder="Username" required autocomplete="username">
+                <input type="password" id="password" placeholder="Password" required autocomplete="current-password">
+                <button type="submit" id="login-btn">Login</button>
+                <p id="login-error" class="error" hidden></p>
+            </form>
+        </div>
+    </div>
+
+    <div id="dashboard" hidden>
+        <!-- Top Bar -->
+        <header class="top-bar">
+            <div class="logo">AgentSmith</div>
+            <div class="status-bar">
+                <span class="badge" id="phase-badge">RECON</span>
+                <span class="target" id="target-display">Target: --</span>
+                <span class="timer" id="elapsed-timer">00:00:00</span>
+                <span class="iteration" id="iteration-display">Step: 0/200</span>
+            </div>
+            <div class="controls">
+                <button id="pause-btn" class="btn btn-warning" onclick="togglePause()">Pause</button>
+                <span class="user-info" id="user-info"></span>
+                <button class="btn btn-secondary" onclick="logout()">Logout</button>
+            </div>
+        </header>
+
+        <!-- Main Layout -->
+        <div class="main-layout">
+            <!-- Left Panel: Command Log -->
+            <div class="panel command-panel">
+                <div class="panel-header">
+                    <h2>Command Log</h2>
+                    <span class="count" id="cmd-count">0</span>
+                </div>
+                <div class="panel-body" id="command-log"></div>
+
+                <!-- Command Injection -->
+                <div class="inject-bar">
+                    <select id="inject-tool">
+                        <option value="shell">shell</option>
+                        <option value="nmap">nmap</option>
+                        <option value="file_ops">file_ops</option>
+                    </select>
+                    <input type="text" id="inject-input" placeholder='{"command": "whoami"}'>
+                    <button class="btn btn-primary" onclick="injectCommand()">Inject</button>
+                </div>
+            </div>
+
+            <!-- Right Panel: Evidence -->
+            <div class="panel evidence-panel">
+                <div class="panel-header">
+                    <h2>Evidence</h2>
+                </div>
+                <div class="panel-body" id="evidence-panel">
+                    <div class="evidence-section">
+                        <h3>Flags</h3>
+                        <div id="flags-list" class="evidence-list">No flags captured yet</div>
+                    </div>
+                    <div class="evidence-section">
+                        <h3>Open Ports</h3>
+                        <div id="ports-list" class="evidence-list">No ports discovered</div>
+                    </div>
+                    <div class="evidence-section">
+                        <h3>Credentials</h3>
+                        <div id="creds-list" class="evidence-list">No credentials found</div>
+                    </div>
+                    <div class="evidence-section">
+                        <h3>Vulnerabilities</h3>
+                        <div id="vulns-list" class="evidence-list">No vulnerabilities found</div>
+                    </div>
+                    <div class="evidence-section">
+                        <h3>Files of Interest</h3>
+                        <div id="files-list" class="evidence-list">No files found</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Bottom Bar: Agent Thinking -->
+        <div class="thinking-bar">
+            <span class="thinking-label">Agent Thinking:</span>
+            <span id="thinking-text" class="thinking-text">Waiting to start...</span>
+        </div>
+    </div>
+
+    <script src="/static/app.js"></script>
+</body>
+</html>
