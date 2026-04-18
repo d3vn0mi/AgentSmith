@@ -1,1 +1,72 @@
-/* tokens */
+/* AgentSmith -- design tokens */
+:root {
+    /* surfaces */
+    --color-bg-app:          #0A0E17;
+    --color-bg-panel:        #111827;
+    --color-bg-panel-raised: #1A1F2E;
+    --color-bg-input:        #242938;
+    --color-border:          #2D3548;
+    --color-border-strong:   #475569;
+
+    /* text */
+    --color-text-primary:   #F1F5F9;
+    --color-text-secondary: #94A3B8;
+    --color-text-dim:       #64748B;
+    --color-text-on-accent: #0A0E17;
+
+    /* state */
+    --color-state-running: #06B6D4;
+    --color-state-success: #22C55E;
+    --color-state-warn:    #EAB308;
+    --color-state-danger:  #EF4444;
+    --color-state-info:    #3B82F6;
+
+    /* phases */
+    --color-phase-recon:    #3B82F6;
+    --color-phase-enum:     #06B6D4;
+    --color-phase-exploit:  #EAB308;
+    --color-phase-privesc:  #EF4444;
+    --color-phase-post:     #A855F7;
+    --color-phase-complete: #22C55E;
+
+    /* fonts */
+    --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    --font-mono: 'JetBrains Mono', 'Fira Code', ui-monospace, SFMono-Regular, Menlo, monospace;
+
+    /* radius */
+    --radius-sm: 4px;
+    --radius-md: 6px;
+    --radius-lg: 10px;
+
+    /* space scale */
+    --space-1: 4px;
+    --space-2: 8px;
+    --space-3: 12px;
+    --space-4: 16px;
+    --space-5: 24px;
+    --space-6: 32px;
+    --space-7: 48px;
+
+    /* z-index */
+    --z-nav:   100;
+    --z-modal: 1000;
+    --z-toast: 2000;
+
+    /* motion */
+    --motion-fast: 120ms;
+    --motion-base: 180ms;
+    --motion-ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+    --motion-ease-in:  cubic-bezier(0.7, 0, 0.84, 0);
+
+    /* shadows */
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+    --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.4);
+    --shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.5);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    :root {
+        --motion-fast: 0ms;
+        --motion-base: 0ms;
+    }
+}
