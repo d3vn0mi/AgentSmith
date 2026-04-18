@@ -5,6 +5,7 @@ import os
 from pathlib import Path
 from typing import Optional
 
+import yaml
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
@@ -124,7 +125,20 @@ async def list_playbooks():
         return []
     out = []
     for p in sorted(pbdir.glob("*.yaml")):
-        out.append({"filename": p.name, "name": p.stem, "description": ""})
+        meta = {"filename": p.name, "name": p.stem,
+                "description": "", "phases": []}
+        try:
+            doc = yaml.safe_load(p.read_text(encoding="utf-8")) or {}
+            if isinstance(doc, dict):
+                if isinstance(doc.get("name"), str):
+                    meta["name"] = doc["name"]
+                if isinstance(doc.get("description"), str):
+                    meta["description"] = doc["description"]
+                if isinstance(doc.get("phases"), list):
+                    meta["phases"] = [str(x) for x in doc["phases"]]
+        except Exception:
+            pass
+        out.append(meta)
     return out
 
 
