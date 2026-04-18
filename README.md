@@ -17,25 +17,14 @@ AgentSmith drives reconnaissance, enumeration, exploitation, and privilege escal
 
 ---
 
-## Status
-
-| Component | State | Notes |
-|---|---|---|
-| **v1 HTB loop** | Stable | Original 5-phase state machine (Recon → Enum → Exploit → PrivEsc → Post). Still works; captures `user.txt` / `root.txt` on CTF-style boxes. |
-| **v2 engine skeleton** | Phase 1 shipped | DAG-based scenario engine: typed events, evidence store with dedup + supersede, YAML playbook loader, expansion engine, executor with nmap parser, mission controller, `/api/v2/assessments` routes. 117/117 tests green. |
-| **v2 decision router** | Phase 2 (next) | Three-tier router (deterministic → cheap model → capable model), prompt caching, cost meter, scope guard, approval queue. |
-
-See the [Roadmap](#roadmap) for the full multi-phase plan.
-
----
-
 ## Table of contents
 
 - [What makes AgentSmith different](#what-makes-agentsmith-different)
 - [Architecture](#architecture)
 - [Quick start](#quick-start)
 - [Configuration](#configuration)
-- [Running an assessment](#running-an-assessment)
+- [Running missions](#running-missions)
+- [Operational notes](#operational-notes)
 - [Development](#development)
 - [Project layout](#project-layout)
 - [Roadmap](#roadmap)
@@ -47,72 +36,90 @@ See the [Roadmap](#roadmap) for the full multi-phase plan.
 
 ## What makes AgentSmith different
 
-- **Any tool, any VM.** The v2 executor runs any binary available on your attack box over SSH — no curated wrapper list to maintain. Structured parsers handle the tools whose output the agent reasons about heavily (nmap today; feroxbuster, gobuster, nuclei, nikto, crackmapexec, hydra, linpeas, smbmap coming in Phase 2–3).
+- **Any tool, any VM.** The executor runs any binary available on your attack box over SSH — no curated wrapper list to maintain. Structured parsers handle the tools whose output the agent reasons about heavily (nmap today; feroxbuster, gobuster, nuclei, nikto, crackmapexec, hydra, linpeas, smbmap coming next).
+- **Multi-mission control plane.** Run multiple missions concurrently — each in its own isolated container, each against a different target or Kali profile. The control plane reconciles live containers on restart; no mission state is lost during a redeploy.
 - **Three-tier token economics.** Every decision routes through the cheapest tier that can handle it: a deterministic playbook step costs $0; a cheap model (Haiku-class) handles parsing and classification; a capable model (Sonnet-class) is reserved for novel reasoning and report narrative. Target: scoped external pentests under $1.50/run, HTB boxes under $0.20/run.
 - **Typed evidence.** Facts like `Host`, `OpenPort`, `WebEndpoint` carry canonical keys, provenance, and confidence. The store dedupes and supersedes automatically. Reports are rendered from typed data, not free-text dumps.
 - **Full traceability.** Every state-changing action emits a schema-versioned event. Runs replay from `events.jsonl`. Every finding in the final report links back to the task that observed it and the raw tool output that proved it.
-- **Multi-scenario.** The engine runs scoped external pentest (first target), HTB, EASM, and red team as distinct YAML playbooks — no core code changes per scenario.
+- **Multi-scenario.** The engine runs scoped external pentest, HTB, EASM, and red team as distinct YAML playbooks — no core code changes per scenario.
 
 ---
 
 ## Architecture
 
+AgentSmith uses a **one image, two entrypoints** model:
+
 ```
-┌────────────────────────────────────────────────────────────────────┐
-│  Dashboard (FastAPI + WebSocket) — "Puppet Master" + v2 panel      │
-└──────────────────────┬─────────────────────────────────────────────┘
-                       │ typed events
-┌──────────────────────▼─────────────────────────────────────────────┐
-│  Event Bus (typed)           │  Cost Meter     │  Approval Queue    │
-└──────────────────────┬───────┴─────────────────┴─────────────────────┘
-                       │
-┌──────────────────────▼─────────────────────────────────────────────┐
-│  Mission Controller                                                 │
-│    ├── Scenario playbook (YAML + expansion rules)                  │
-│    ├── Mission Graph (typed tasks, edges = data deps)              │
-│    ├── Scheduler (concurrency + rate limit)                        │
-│    └── Evidence Store (typed facts with provenance)                │
-└──────────────────────┬─────────────────────────────────────────────┘
-                       │ task dispatch
-┌──────────────────────▼─────────────────────────────────────────────┐
-│  Three-Tier Decision Router  (Phase 2)                              │
-│    Tier 0  deterministic playbook binding — no LLM                 │
-│    Tier 1  cheap model — parse, classify, rank                     │
-│    Tier 2  capable model — novel reasoning, narrative              │
-└──────────────────────┬─────────────────────────────────────────────┘
-                       │ command + args
-┌──────────────────────▼─────────────────────────────────────────────┐
-│  Scope Guard + Risk Classifier   (Phase 2)                          │
-└──────────────────────┬─────────────────────────────────────────────┘
-                       │ approved commands
-┌──────────────────────▼─────────────────────────────────────────────┐
-│  Executor — SSH transport, process manager, parsers, LRU cache      │
-└────────────────────────────────────────────────────────────────────┘
+  docker compose up -d --build
+       │
+       ▼
+┌──────────────────────────────────────────────────────────────┐
+│  agentsmith-control  (python -m agent_smith control-plane)   │
+│                                                              │
+│  FastAPI server — owns SQLite registry, mounts docker.sock   │
+│  ├── /api/profiles    — Kali SSH credential profiles         │
+│  ├── /api/missions    — CRUD + WebSocket event stream        │
+│  ├── /api/playbooks   — available YAML scenarios             │
+│  └── Spawner + Reconciler  — manages agent containers        │
+└──────────────────┬───────────────────────────────────────────┘
+                   │  docker run  (one per mission)
+       ┌───────────┴───────────┐
+       ▼                       ▼
+┌─────────────────┐   ┌─────────────────────────────┐
+│ agentsmith-     │   │ agentsmith-agent-<short-id>  │
+│ agent-abc12     │   │   (python -m agent_smith      │
+│                 │   │    run-agent)                 │
+│  Mission loop   │   │                              │
+│  Event writer   │   │  Labels:                     │
+│  SSH executor   │   │  agentsmith.mission_id=<id>  │
+└─────────────────┘   │  agentsmith.agent_id=<id>   │
+                       └─────────────────────────────┘
 ```
 
-**Stack.** Python 3.11+, FastAPI, Pydantic v2, AsyncSSH, Anthropic / OpenAI / Ollama SDKs, Docker + Caddy (HTTPS), JWT + RBAC auth.
+**Key design points:**
+
+- **One image (`agentsmith`), two entrypoints:** `python -m agent_smith control-plane` starts the FastAPI control server; `python -m agent_smith run-agent` starts a mission execution worker. The control plane spawns agent containers dynamically via the Docker socket.
+- **Container labeling:** every agent container carries labels `agentsmith.mission_id=<id>` and `agentsmith.agent_id=<id>`. The control plane uses these labels to reconcile live containers on startup — if the control plane restarts mid-mission, it discovers and re-attaches to running agents.
+- **Shared `./data` volume:** both the control container and all agent containers mount `./data`. This holds:
+  - `data/registry.db` — SQLite database (missions, profiles, users)
+  - `data/missions/<mission_id>/events.jsonl` — append-only event log
+  - `data/missions/<mission_id>/history.jsonl` — LLM conversation history
+  - `data/missions/<mission_id>/evidence.json` — typed evidence store snapshot
+  - `data/users.json` — admin/operator user accounts
+
+**Stack:** Python 3.12, FastAPI, Pydantic v2, AsyncSSH, Anthropic / OpenAI / Ollama SDKs, Docker + Caddy (HTTPS), JWT + RBAC auth, SQLite.
 
 ---
 
 ## Quick start
 
 ```bash
-# 1. Clone and configure
+# 1. Clone
 git clone https://github.com/d3vn0mi/AgentSmith.git
 cd AgentSmith
+
+# 2. Configure environment
 cp .env.example .env
-# Edit .env with your API keys and admin password
-# Edit config.yaml with target IP and attack box details
+# Edit .env — set ANTHROPIC_API_KEY, JWT_SECRET, MASTER_KEY (or let it auto-generate),
+# and ADMIN_PASSWORD for the seed step below.
 
-# 2. Start everything
-docker compose up -d
+# 3. Build and start the control plane
+docker compose up -d --build
 
-# 3. Create admin user
-docker compose exec agentsmith python -m agent_smith seed-admin
+# 4. Seed the admin account
+docker exec -e ADMIN_PASSWORD=your_strong_password agentsmith-control \
+    python -m agent_smith seed-admin
 
-# 4. Open dashboard
+# 5. Open the dashboard
 # https://4g3ntsm1th.d3vn0mi.com  (or http://localhost:8080 for local dev)
 ```
+
+### First mission walkthrough
+
+1. **Log in** with the admin credentials you just seeded.
+2. Open the **Profiles** page → **New profile** — enter your Kali attack box hostname, SSH user, and private key. This credential is stored encrypted using `MASTER_KEY`.
+3. Go to **Missions** → **New mission** — pick a playbook, select your Kali profile, enter the target IP. Submit.
+4. The control plane spawns an `agentsmith-agent-<short-id>` container. Watch the **Live** tab stream events in real time.
 
 ### With a local LLM (Ollama)
 
@@ -125,21 +132,13 @@ docker compose --profile local-llm up -d
 
 ## Configuration
 
-`config.yaml` controls everything:
+`config.yaml` controls global LLM provider settings and server configuration. **Target IP and attack-box credentials are now per-mission** — set them in the **Profiles** and **New mission** UI, not here.
 
 ```yaml
 llm:
   provider: "claude"                    # claude | openai | ollama
-  model:    "claude-sonnet-4-6"
+  model:    "claude-sonnet-4-20250514"
   api_key:  "${ANTHROPIC_API_KEY}"
-
-target:
-  ip: ""                                # the box you're assessing
-
-attack_box:                             # where tools execute from
-  host: ""
-  user: "root"
-  key_path: "~/.ssh/id_rsa"
 
 server:
   host: "0.0.0.0"
@@ -155,73 +154,76 @@ auth:
 agent:
   max_iterations:  200
   command_timeout: 120
-  phase_timeout:   1800                 # per-phase cap for v1 loop
+  phase_timeout:   1800
 ```
 
 ---
 
-## Running an assessment
+## Running missions
 
-### v1 HTB loop (legacy, stable)
+All mission management is through the dashboard UI or the REST API.
 
-Point it at a single CTF-style box. The agent runs the full 5-phase kill chain autonomously and captures flags:
+### Via the dashboard
 
-```bash
-PYTHONPATH=src python -m agent_smith --config config.yaml
-```
+1. **Profiles** → create a Kali profile (SSH host, user, key).
+2. **Missions** → **New mission** → select playbook + profile + target IP → Submit.
+3. Watch the **Live** tab. Switch to **Graph**, **Evidence**, or **History** tabs at any time.
+4. Click **Stop** to terminate a running mission gracefully.
 
-### v2 engine (scoped external pentest — scaffolded, evolving)
-
-The v2 engine runs alongside the v1 loop. Phase 1 ships the DAG skeleton: YAML playbook → port scan → expansion rule fires per open HTTP/HTTPS port → per-port tasks spawn. No LLM calls yet — those land in Phase 2.
-
-Run the included skeleton playbook against a host you own:
+### Via the REST API
 
 ```bash
-PYTHONPATH=src python - <<'PY'
-import asyncio, pathlib
-from agent_smith.controller import MissionController
-from agent_smith.event_stream.bus import EventBus
-from agent_smith.scenarios.loader import load_playbook
-from agent_smith.transport.ssh import SSHConnection
+# Create a mission
+curl -s -X POST https://localhost/api/missions \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"playbook": "skeleton_portscan", "profile_id": "<id>", "target": "10.10.11.5"}'
 
-async def main():
-    src = pathlib.Path("src/agent_smith/playbooks/skeleton_portscan.yaml")
-    staged = pathlib.Path("/tmp/skeleton_portscan.yaml")
-    staged.write_text(src.read_text().replace("${TARGET}", "203.0.113.10"))
-    pb = load_playbook(staged)
+# List missions
+curl -s https://localhost/api/missions -H "Authorization: Bearer $TOKEN"
 
-    ssh = SSHConnection(host="YOUR_ATTACK_BOX_IP", user="root", key_path="~/.ssh/id_rsa")
-    await ssh.connect()
-    try:
-        def builder(spec, args):
-            if spec.tool == "nmap":
-                return f"nmap -sV -oX - {args['target']}"
-            if spec.tool == "curl":
-                return f"curl -sS -o /dev/null -w '%{{http_code}}' {args['url']}"
-            return spec.tool
-
-        bus = EventBus()
-        controller = MissionController(
-            mission_id="demo-1",
-            playbook=pb,
-            ssh=ssh,
-            run_dir=pathlib.Path("data/runs/demo-1"),
-            bus=bus,
-            command_builder=builder,
-        )
-        await controller.run()
-    finally:
-        await ssh.disconnect()
-
-asyncio.run(main())
-PY
+# Stream events (WebSocket)
+# ws://localhost/api/missions/<id>/stream?since=0
 ```
 
-Artifacts land under `data/runs/demo-1/`:
-- `events.jsonl` — every event, replay-able
-- `tool_runs/*.stdout` / `.stderr` — raw tool outputs, indexed by run id
+---
 
-The v2 dashboard panel at the bottom of the existing UI shows the assessment list and graph JSON. Assessments created via `POST /api/v2/assessments` appear in the list; Phase 4 will wire the "run this assessment" button.
+## Operational notes
+
+### Stopping a runaway mission
+
+Use the **Stop** button in the dashboard, or from the host shell:
+
+```bash
+# Kill by mission ID (safe — leaves the control plane and other missions running)
+docker kill $(docker ps --filter label=agentsmith.mission_id=<mission_id> -q)
+```
+
+### `MASTER_KEY` warning
+
+`MASTER_KEY` is used to encrypt Kali SSH credentials stored in the registry. On first run, if not set in `.env`, it is auto-generated and written back. **Back it up.** Losing `MASTER_KEY` makes all stored Kali credentials unrecoverable — you would need to re-enter every profile.
+
+### Where data lives
+
+| Path | Contents |
+|---|---|
+| `./data/registry.db` | SQLite — missions, profiles, users |
+| `./data/missions/<id>/events.jsonl` | Append-only event log (replayable) |
+| `./data/missions/<id>/history.jsonl` | LLM conversation history per mission |
+| `./data/missions/<id>/evidence.json` | Typed evidence snapshot |
+| `./data/users.json` | Admin/operator accounts |
+
+### Restart semantics
+
+Restarting the control plane is safe:
+
+```bash
+docker compose restart agentsmith-control
+```
+
+On startup the control plane queries Docker for containers with `agentsmith.mission_id` labels, reconciles their state against `registry.db`, and re-attaches to any missions that are still running. Browser WebSocket connections reconnect automatically and replay missed events via `?since=<seq>`.
+
+Running agent containers are **not** affected by a control plane restart.
 
 ---
 
@@ -232,16 +234,13 @@ The v2 dashboard panel at the bottom of the existing UI shows the assessment lis
 pip install -e ".[dev]"
 
 # Run tests
-PYTHONPATH=src pytest tests/ -v
+pytest -q
 
-# Run just the v2 suite
-PYTHONPATH=src pytest tests/v2/ -v
-
-# Start the server locally (hot-reload)
+# Start the control plane locally (hot-reload)
 PYTHONPATH=src uvicorn agent_smith.server.app:create_app --factory --reload --port 8080
 ```
 
-**TDD throughout.** Phase 1 was implemented test-first across 27 commits; every module has unit tests, the controller has integration tests, and an end-to-end test exercises the full skeleton.
+**TDD throughout.** Every module has unit tests; the controller has integration tests; an end-to-end test exercises the full mission lifecycle (gated behind an environment flag).
 
 ---
 
@@ -250,6 +249,15 @@ PYTHONPATH=src uvicorn agent_smith.server.app:create_app --factory --reload --po
 ```
 src/agent_smith/
 ├── auth/                      # JWT + RBAC (admin, operator, viewer)
+├── control/                   # Control-plane internals
+│   ├── registry.py           # SQLite mission + profile registry
+│   ├── spawner.py            # Docker container lifecycle manager
+│   ├── recovery.py           # Startup reconciliation against live containers
+│   ├── report.py             # Markdown mission report generator
+│   └── crypto.py             # MASTER_KEY encryption for stored credentials
+├── agent_runner/              # Agent-container entrypoint
+│   ├── runner.py             # Mission execution loop
+│   └── event_writer.py       # JSONL event persistence
 ├── core/                      # v1 HTB loop (legacy, stable)
 │   ├── agent.py              # Plan → Execute → Observe → Reason loop
 │   ├── mission.py            # Phase enum state machine
@@ -272,14 +280,12 @@ src/agent_smith/
 
 ## Roadmap
 
-Built in phases so each ships something usable.
-
 | Phase | Status | Scope |
 |---|---|---|
-| **Phase 1** | Shipped | DAG engine skeleton: event stream, evidence, mission graph, YAML playbooks, executor, nmap parser, `/api/v2` routes, demo dashboard panel. |
-| **Phase 2** | Next | Three-tier decision router, prompt caching, cost meter, scope guard + risk classifier + approval queue (backend), 5 more structured parsers, LRU result cache, generic Tier 1 fallback. |
-| **Phase 3** | Planned | First complete scoped-pentest playbook; Tier 2 pivot reasoning; recurrent expansion end-to-end; full 9-parser MVP set. |
-| **Phase 4** | Planned | Dashboard v2: mindmap panel, evidence panel with filters, approval queue UI, per-assessment cost rollup, cross-assessment trend view. |
+| **Phase 1** | Shipped | DAG engine skeleton: event stream, evidence, mission graph, YAML playbooks, executor, nmap parser, `/api/v2` routes. |
+| **Phase 2 (control plane)** | Shipped | Multi-agent control plane: SQLite registry, dynamic container spawning, Docker label reconciliation, profiles, real-time WebSocket dashboard, multi-mission UI. |
+| **Phase 3** | Next | Three-tier decision router, prompt caching, cost meter, scope guard + risk classifier + approval queue, 5 more structured parsers. |
+| **Phase 4** | Planned | First complete scoped-pentest playbook; Tier 2 pivot reasoning; recurrent expansion end-to-end; full 9-parser MVP set. |
 | **Phase 5** | Planned | Hardening: strict-mode scope enforcement, mission-halt UX, failure-recovery polish, replay + audit export, smoke tests against three target classes. |
 | **Beyond** | Sketched | HTB playbook, EASM playbook, red-team playbook, optional MCP-client seat for hexstrike-ai interop, WinRM transport. |
 
@@ -291,7 +297,7 @@ AgentSmith is a **dual-use security tool**. It exists to help defenders and auth
 
 **Only use it against systems you own or for which you have explicit, written authorization to test.** Running reconnaissance, exploitation, or privilege-escalation tooling against systems without permission is illegal in most jurisdictions and ethically indefensible regardless of jurisdiction.
 
-The scope guard and approval queue arriving in Phase 2 are designed to make scoped engagements safer by default. They are not a substitute for a signed statement of work, rules of engagement, and operator judgment.
+The scope guard and approval queue arriving in Phase 3 are designed to make scoped engagements safer by default. They are not a substitute for a signed statement of work, rules of engagement, and operator judgment.
 
 **If you're not sure whether you have authorization, you don't.**
 
