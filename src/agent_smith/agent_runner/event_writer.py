@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import json
-import os
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -14,7 +13,7 @@ def _utc_ts() -> str:
 
 
 class EventWriter:
-    def __init__(self, path, *, mission_id: str, agent_id: str) -> None:
+    def __init__(self, path: str | Path, *, mission_id: str, agent_id: str) -> None:
         self._path = Path(path)
         self._path.parent.mkdir(parents=True, exist_ok=True)
         self._mission_id = mission_id
