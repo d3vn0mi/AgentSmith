@@ -112,6 +112,8 @@ async def stop_mission(mission_id: str):
                 _spawner.kill(a.container_id, timeout=10)
             except Exception:
                 pass
+            _registry.close_agent(a.id, status="killed", exit_code=None)
+    _registry.set_mission_status(mission_id, "stopped", ended_at=True)
 
 
 @router.get("/api/playbooks")

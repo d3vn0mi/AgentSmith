@@ -61,6 +61,10 @@ def test_stop_mission(ctx):
     resp = client.post(f"/api/missions/{created['id']}/stop")
     assert resp.status_code == 204
     spawner.kill.assert_called_once()
+    assert reg.get_mission(created["id"]).status == "stopped"
+    agents = reg.list_agents_for_mission(created["id"])
+    assert agents[0].status == "killed"
+    assert agents[0].ended_at is not None
 
 
 def test_playbooks(ctx, tmp_path, monkeypatch):
