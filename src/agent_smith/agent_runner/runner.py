@@ -2,17 +2,21 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import os
 import signal
 import sys
 import traceback
 from pathlib import Path
 
+from agent_smith.agent_runner.bridge import EventBridge
 from agent_smith.agent_runner.event_writer import EventWriter
 from agent_smith.control import crypto, registry
+from agent_smith.events import EventBus
 
 
-async def _build_and_run_agent(mission, profile, data_dir: Path, writer: EventWriter):
+async def _build_and_run_agent(mission, profile, data_dir: Path, writer: EventWriter,
+                                bus: EventBus):
     """Wire SSHConnection + AgentSmith and run it.
 
     Isolated for test substitution.
@@ -21,7 +25,6 @@ async def _build_and_run_agent(mission, profile, data_dir: Path, writer: EventWr
 
     from agent_smith.core.agent import AgentSmith
     from agent_smith.core.config import load_config
-    from agent_smith.events import EventBus
     from agent_smith.llm.factory import create_provider
     from agent_smith.tools.base import ToolRegistry
     from agent_smith.tools.exploit import ExploitTool
@@ -49,7 +52,6 @@ async def _build_and_run_agent(mission, profile, data_dir: Path, writer: EventWr
         if hasattr(config.agent, k):
             setattr(config.agent, k, v)
 
-    bus = EventBus()
     tools = ToolRegistry()
     tools.register(ShellTool())
     tools.register(NmapTool())
@@ -85,6 +87,7 @@ async def run(*, db_path: Path, data_dir: Path, mission_id: str, agent_id: str) 
 
     events_path = data_dir / "missions" / mission_id / "events.jsonl"
     writer = EventWriter(events_path, mission_id=mission_id, agent_id=agent_id)
+    mission_dir = events_path.parent
 
     stopped = {"flag": False}
     def _sigterm(*_a):
@@ -93,9 +96,16 @@ async def run(*, db_path: Path, data_dir: Path, mission_id: str, agent_id: str) 
     signal.signal(signal.SIGTERM, _sigterm)
     signal.signal(signal.SIGINT, _sigterm)
 
+    bus = EventBus()
+    bridge = EventBridge(bus, writer, mission_dir)
+
     writer.emit("mission.started", {})
     try:
-        await _build_and_run_agent(mission, profile, data_dir, writer)
+        await bridge.start()
+        try:
+            await _build_and_run_agent(mission, profile, data_dir, writer, bus)
+        finally:
+            await bridge.stop()
     except SystemExit:
         raise
     except BaseException as exc:
@@ -111,6 +121,10 @@ async def run(*, db_path: Path, data_dir: Path, mission_id: str, agent_id: str) 
 
 
 def main() -> None:
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    )
     mission_id = os.environ["MISSION_ID"]
     agent_id = os.environ["AGENT_ID"]
     db_path = Path(os.environ.get("REGISTRY_DB", "data/registry.db"))
