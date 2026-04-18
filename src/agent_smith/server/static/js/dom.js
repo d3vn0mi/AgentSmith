@@ -126,10 +126,16 @@ const FOCUSABLE_SELECTOR = [
 ].join(', ');
 
 /**
- * Trap keyboard focus inside container. Returns a teardown function.
- * @param {HTMLElement} container
- * @param {Function} [onEscape]
- * @returns {Function} teardown
+ * Trap keyboard focus inside `container`. Intended for modals/dialogs.
+ *
+ * Returns a teardown function. The caller is responsible for calling teardown
+ * exactly once when the trap should end (e.g., when the modal closes). Failing
+ * to call teardown will leak the keydown listener and the saved focus target.
+ *
+ * Do NOT call trapFocus twice on the same container without calling the first
+ * teardown — both listeners would stack. openModal/closeModal in modal.js
+ * enforces this by always calling closeModal (which invokes the prior teardown)
+ * before opening a new modal.
  */
 export function trapFocus(container, onEscape) {
     const focusables = () => qsa(FOCUSABLE_SELECTOR, container);
@@ -181,8 +187,12 @@ export function trapFocus(container, onEscape) {
 }
 
 /**
- * Announce text to screen readers via an aria-live region in #toast-root.
- * @param {string} text
+ * Announce `text` to assistive technologies via the live region at #toast-root.
+ *
+ * Requires #toast-root to exist and be configured as an ARIA live region
+ * (index.html sets role="region" aria-live="polite"). The announcement span
+ * is removed after 2s to avoid stale DOM. Silently no-ops if #toast-root
+ * is absent (e.g., on the login screen before shell mount).
  */
 export function announceLive(text) {
     const root = qs('#toast-root');
