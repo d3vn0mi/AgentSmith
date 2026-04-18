@@ -1,0 +1,74 @@
+name: htb-easy-recon
+version: "0.1"
+description: "Recon-only playbook for Hack The Box easy Linux retired boxes. Emits DirPath, WebTech, and Vulnerability facts. Requires ffuf, whatweb, searchsploit, and seclists installed on the Kali attack box."
+scope_required: false
+allowed_risks: [low, medium]
+
+root_tasks:
+  - port_scan:
+      target: "${TARGET}"
+
+task_types:
+  port_scan:
+    consumes: {}
+    produces: [Host, OpenPort]
+    tool: nmap
+    command_template: "nmap -sV -T4 -oX - {target}"
+    args_template:
+      target: "{target}"
+    parser: nmap
+    timeout: 300
+
+  ffuf_dir:
+    consumes:
+      port: "OpenPort{service: http|https}"
+    produces: [DirPath]
+    tool: ffuf
+    command_template: >-
+      ffuf -u http://{host}:{port_number}/FUZZ
+           -w /usr/share/seclists/Discovery/Web-Content/common.txt
+           -mc 200,301,401,403
+           -of json
+           -o /tmp/ffuf_{host}_{port_number}.json 2>/dev/null;
+      cat /tmp/ffuf_{host}_{port_number}.json
+    args_template:
+      host: "{port.host_ip}"
+      port_number: "{port.number}"
+    parser: ffuf
+    timeout: 600
+
+  whatweb:
+    consumes:
+      port: "OpenPort{service: http|https}"
+    produces: [WebTech]
+    tool: whatweb
+    command_template: "whatweb -a 3 --log-json=- http://{host}:{port_number}"
+    args_template:
+      host: "{port.host_ip}"
+      port_number: "{port.number}"
+    parser: whatweb
+    timeout: 120
+
+  searchsploit_lookup:
+    consumes:
+      tech: "WebTech"
+    produces: [Vulnerability]
+    tool: searchsploit
+    command_template: "searchsploit -j '{software} {version}'"
+    args_template:
+      software: "{tech.software}"
+      version: "{tech.version}"
+    parser: searchsploit
+    timeout: 60
+
+expansions:
+  - id: http-enum
+    on_fact: "OpenPort{service: http|https}"
+    spawn: [ffuf_dir, whatweb]
+
+  - id: tech-to-cve
+    on_fact: "WebTech"
+    spawn: [searchsploit_lookup]
+
+terminations:
+  - scope_exhausted
