@@ -53,3 +53,58 @@ PYTHONPATH=src python -m agent_smith --config config.yaml
 docker compose --profile local-llm up -d
 # Set provider: "ollama" and model: "llama3.1" in config.yaml
 ```
+
+## Phase 1 demo (v2 engine skeleton)
+
+The v2 engine runs alongside the existing HTB loop. Phase 1 ships the engine skeleton — DAG graph, typed facts, YAML playbook loader, executor with nmap parser — with no LLM calls.
+
+Run the included skeleton playbook against a host you own:
+
+```bash
+PYTHONPATH=src python - <<'PY'
+import asyncio, pathlib
+from agent_smith.controller import MissionController
+from agent_smith.event_stream.bus import EventBus
+from agent_smith.scenarios.loader import load_playbook
+from agent_smith.transport.ssh import SSHConnection
+
+async def main():
+    path = pathlib.Path("src/agent_smith/playbooks/skeleton_portscan.yaml")
+    staged = pathlib.Path("/tmp/skeleton_portscan.yaml")
+    staged.write_text(path.read_text().replace("${TARGET}", "203.0.113.10"))
+    pb = load_playbook(staged)
+
+    ssh = SSHConnection(host="YOUR_ATTACK_BOX_IP", user="root", key_path="~/.ssh/id_rsa")
+    await ssh.connect()
+    try:
+        def builder(spec, args):
+            if spec.tool == "nmap":
+                return f"nmap -sV -oX - {args['target']}"
+            if spec.tool == "curl":
+                return f"curl -sS -o /dev/null -w '%{{http_code}}' {args['url']}"
+            return spec.tool
+
+        bus = EventBus()
+        controller = MissionController(
+            mission_id="demo-1",
+            playbook=pb,
+            ssh=ssh,
+            run_dir=pathlib.Path("data/runs/demo-1"),
+            bus=bus,
+            command_builder=builder,
+        )
+        await controller.run()
+    finally:
+        await ssh.disconnect()
+
+asyncio.run(main())
+PY
+```
+
+Artifacts land under `data/runs/demo-1/`:
+- `events.jsonl` — complete event stream
+- `tool_runs/*.stdout` / `.stderr` — raw tool outputs
+
+The v2 dashboard panel at the bottom of the existing UI shows the assessment list and graph JSON (created assessments only show up if you POST to `/api/v2/assessments`).
+
+**Phase 1 intentionally omits:** LLM calls, scope guard, approval queue, cost meter, mindmap UI. Those land in Phases 2–4.

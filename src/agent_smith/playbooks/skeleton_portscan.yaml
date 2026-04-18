@@ -1,0 +1,39 @@
+# Phase 1 demo playbook.
+# Runs a port scan, then runs a no-op "web_probe" task per http/https port
+# to demonstrate expansion rules firing end-to-end.
+name: skeleton-portscan
+version: "1.0"
+scope_required: false
+allowed_risks: [low, medium]
+
+root_tasks:
+  - port_scan:
+      target: "${TARGET}"
+
+task_types:
+  port_scan:
+    consumes: {}
+    produces: [Host, OpenPort]
+    tool: nmap
+    args_template:
+      target: "{target}"
+    parser: nmap
+    timeout: 300
+
+  web_probe:
+    consumes:
+      host: Host
+      port: "OpenPort{service: http|https}"
+    produces: []
+    tool: curl
+    args_template:
+      url: "http://{host.ip}:{port.number}"
+    timeout: 30
+
+expansions:
+  - id: http-probe
+    on_fact: "OpenPort{service: http|https}"
+    spawn: [web_probe]
+
+terminations:
+  - scope_exhausted

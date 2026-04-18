@@ -387,3 +387,11 @@ body {
 ::-webkit-scrollbar-track { background: var(--bg-primary); }
 ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
 ::-webkit-scrollbar-thumb:hover { background: var(--text-dim); }
+
+#v2-assessments { margin-top: 2em; border-top: 1px solid #333; padding-top: 1em; }
+#v2-assessments .panel { padding: 1em; }
+#v2-assessments .subtle { opacity: 0.7; font-size: 0.9em; }
+#v2-list { display: flex; flex-direction: column; gap: 0.25em; margin-bottom: 1em; }
+.v2-item { text-align: left; padding: 0.5em; cursor: pointer; background: #222; color: #ddd; border: 1px solid #333; }
+.v2-item:hover { background: #333; }
+#v2-graph-json { max-height: 400px; overflow: auto; background: #111; color: #ddd; padding: 0.5em; }
