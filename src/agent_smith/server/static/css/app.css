@@ -244,3 +244,15 @@
     padding: 2px 0;
     word-break: break-all;
 }
+
+/* ---------- Findings tab ---------- */
+.findings-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(420px, 1fr));
+    gap: var(--space-4);
+}
+.findings-card { display: flex; flex-direction: column; gap: var(--space-3); }
+.findings-head { display: flex; align-items: center; gap: var(--space-3); }
+.findings-title { font-weight: 600; font-size: 14px; flex: 1; }
+.findings-list { list-style: none; padding: 0; font-size: 13px; }
+.findings-list li { padding: 4px 0; border-bottom: 1px solid rgba(45, 53, 72, 0.5); }
