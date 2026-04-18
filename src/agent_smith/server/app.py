@@ -95,22 +95,36 @@ def create_app(
     return app
 
 
-def _ensure_master_key(env_path: Path = Path(".env")) -> str:
-    key = os.environ.get("MASTER_KEY")
-    if key:
-        return key
+def _ensure_master_key(key_path: Path = Path("data/master_key")) -> str:
+    """Return the MASTER_KEY, generating and persisting it on first run.
+
+    Precedence: env var (explicit operator override) > on-disk file > newly
+    generated. Persisted to the shared ./data volume so it survives
+    control-plane restarts (env_file .env is read-only inside the container).
+    """
+    env_key = os.environ.get("MASTER_KEY")
+    if env_key:
+        return env_key
+
+    key_path.parent.mkdir(parents=True, exist_ok=True)
+    if key_path.exists():
+        key_str = key_path.read_text().strip()
+        if key_str:
+            os.environ["MASTER_KEY"] = key_str
+            return key_str
+
     key_str = crypto.generate_key().decode()
+    key_path.write_text(key_str)
+    try:
+        key_path.chmod(0o600)
+    except OSError:
+        pass
     os.environ["MASTER_KEY"] = key_str
-    if env_path.exists():
-        contents = env_path.read_text()
-        if "MASTER_KEY=" not in contents:
-            with env_path.open("a") as fh:
-                fh.write(f"\nMASTER_KEY={key_str}\n")
     logger = logging.getLogger("agent_smith")
     logger.warning(
         "Generated new MASTER_KEY and persisted to %s. "
         "BACK THIS UP — losing it makes all saved Kali creds unrecoverable.",
-        env_path,
+        key_path,
     )
     return key_str
 
