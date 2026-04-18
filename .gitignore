@@ -10,3 +10,7 @@ build/
 .mypy_cache/
 .ruff_cache/
 .venv/
+venv/
+
+# Internal planning / brainstorming — kept locally, not pushed
+docs/superpowers/
