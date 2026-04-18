@@ -73,3 +73,50 @@ def test_playbooks(ctx, tmp_path, monkeypatch):
     assert resp.status_code == 200
     names = [p["filename"] for p in resp.json()]
     assert "demo.yaml" in names
+
+
+import json
+
+
+def _seed_events(data_dir, mission_id, n):
+    d = data_dir / "missions" / mission_id
+    d.mkdir(parents=True, exist_ok=True)
+    path = d / "events.jsonl"
+    with path.open("w") as fh:
+        for i in range(n):
+            fh.write(json.dumps({
+                "ts": "2026-04-18T00:00:00Z", "seq": i,
+                "type": "agent.thinking" if i % 2 else "tool.run_started",
+                "mission_id": mission_id, "agent_id": "a", "data": {},
+            }) + "\n")
+
+
+def test_events_after(ctx):
+    client, reg, profile, _, data_dir = ctx
+    mid = client.post("/api/missions", json={
+        "name": "x", "target": "t", "playbook": "pb.yaml",
+        "kali_profile_id": profile.id}).json()["id"]
+    _seed_events(data_dir, mid, 5)
+    resp = client.get(f"/api/missions/{mid}/events?after=1&limit=2")
+    assert resp.status_code == 200
+    assert [e["seq"] for e in resp.json()] == [2, 3]
+
+
+def test_events_before(ctx):
+    client, reg, profile, _, data_dir = ctx
+    mid = client.post("/api/missions", json={
+        "name": "x", "target": "t", "playbook": "pb.yaml",
+        "kali_profile_id": profile.id}).json()["id"]
+    _seed_events(data_dir, mid, 5)
+    resp = client.get(f"/api/missions/{mid}/events?before=4&limit=10")
+    assert [e["seq"] for e in resp.json()] == [3, 2, 1, 0]
+
+
+def test_events_filter_types(ctx):
+    client, reg, profile, _, data_dir = ctx
+    mid = client.post("/api/missions", json={
+        "name": "x", "target": "t", "playbook": "pb.yaml",
+        "kali_profile_id": profile.id}).json()["id"]
+    _seed_events(data_dir, mid, 6)
+    resp = client.get(f"/api/missions/{mid}/events?types=tool.run_started&limit=10")
+    assert {e["type"] for e in resp.json()} == {"tool.run_started"}

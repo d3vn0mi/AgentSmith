@@ -124,3 +124,47 @@ async def list_playbooks():
     for p in sorted(pbdir.glob("*.yaml")):
         out.append({"filename": p.name, "name": p.stem, "description": ""})
     return out
+
+
+import json as _json
+from typing import Iterator
+
+
+def _iter_events(path: Path) -> Iterator[dict]:
+    if not path.exists():
+        return
+    with path.open("r", encoding="utf-8", errors="replace") as fh:
+        for line in fh:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                yield _json.loads(line)
+            except _json.JSONDecodeError:
+                continue
+
+
+@router.get("/api/missions/{mission_id}/events")
+async def get_events(
+    mission_id: str,
+    after: Optional[int] = None,
+    before: Optional[int] = None,
+    limit: int = 200,
+    types: Optional[str] = None,
+):
+    assert _registry and _data_dir is not None
+    if _registry.get_mission(mission_id) is None:
+        raise HTTPException(404)
+    limit = max(1, min(limit, 1000))
+    type_set = {t for t in (types.split(",") if types else []) if t}
+    events_path = _data_dir / "missions" / mission_id / "events.jsonl"
+    events = list(_iter_events(events_path))
+    if type_set:
+        events = [e for e in events if e.get("type") in type_set]
+
+    if before is not None:
+        slc = [e for e in events if e.get("seq", -1) < before]
+        return list(reversed(slc))[:limit]
+    start = after if after is not None else -1
+    slc = [e for e in events if e.get("seq", -1) > start]
+    return slc[:limit]
