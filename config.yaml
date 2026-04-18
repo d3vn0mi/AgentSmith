@@ -5,11 +5,11 @@ llm:
   base_url: "http://ollama:11434"       # Only used when provider is "ollama"
 
 target:
-  ip: ""                                # Target IP (set before starting)
+  ip: "10.129.29.239"                                # Target IP (set before starting)
 
 attack_box:
-  host: ""                              # Attack/assessment box SSH host
-  user: "root"
+  host: "192.168.1.100"                              # Attack/assessment box SSH host
+  user: "d3vn0mi"
   key_path: "~/.ssh/id_rsa"
   password: "${ATTACK_BOX_PASSWORD}"    # Prefer key_path; leave env var unset if using keys
 
