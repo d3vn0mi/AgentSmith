@@ -15,6 +15,7 @@ from agent_smith.core.config import Config
 from agent_smith.events import EventBus
 from agent_smith.server.auth_routes import configure_auth_routes, router as auth_router
 from agent_smith.server.routes import configure_routes, router as api_router
+from agent_smith.server.v2_routes import router as v2_router
 from agent_smith.server.websocket import WebSocketHub
 
 
@@ -50,6 +51,7 @@ def create_app(
     # Register routers
     app.include_router(auth_router)
     app.include_router(api_router)
+    app.include_router(v2_router)
 
     # WebSocket hub
     ws_hub = WebSocketHub(event_bus)
