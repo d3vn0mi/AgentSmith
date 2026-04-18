@@ -256,3 +256,28 @@
 .findings-title { font-weight: 600; font-size: 14px; flex: 1; }
 .findings-list { list-style: none; padding: 0; font-size: 13px; }
 .findings-list li { padding: 4px 0; border-bottom: 1px solid rgba(45, 53, 72, 0.5); }
+
+/* ---------- Report tab ---------- */
+.report-wrap { max-width: 720px; }
+.report-toolbar { display: flex; justify-content: flex-end; margin-bottom: var(--space-3); }
+.md h1 { font-size: 22px; margin: var(--space-5) 0 var(--space-3); }
+.md h2 { font-size: 18px; margin: var(--space-5) 0 var(--space-2); color: var(--color-text-secondary); }
+.md h3 { font-size: 15px; margin: var(--space-4) 0 var(--space-2); }
+.md p  { margin: var(--space-2) 0; line-height: 1.6; }
+.md ul { padding-left: var(--space-5); }
+.md li { margin: 2px 0; }
+.md pre {
+    background: var(--color-bg-panel-raised);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm);
+    padding: var(--space-3);
+    font-size: 12px;
+    overflow-x: auto;
+    margin: var(--space-3) 0;
+}
+.md code {
+    background: var(--color-bg-input);
+    padding: 1px 4px;
+    border-radius: 3px;
+    font-size: 12px;
+}
