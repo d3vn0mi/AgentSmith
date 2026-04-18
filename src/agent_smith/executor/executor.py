@@ -78,7 +78,7 @@ class Executor:
             if parser is not None:
                 facts = parser.parse(
                     tool_run,
-                    context={"consumes": task.consumes},
+                    context={"consumes": task.consumes, "args": task.args},
                 )
                 for f in facts:
                     for prov in f.provenance:

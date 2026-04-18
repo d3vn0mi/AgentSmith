@@ -59,4 +59,4 @@ async def test_executor_passes_consumes_as_context(tmp_path):
 
     await ex.run(task, spec)
 
-    assert _CapturingParser.captured == {"consumes": {"tech": fact}}
+    assert _CapturingParser.captured == {"consumes": {"tech": fact}, "args": {}}

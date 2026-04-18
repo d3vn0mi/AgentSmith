@@ -28,6 +28,14 @@ def _register_builtins() -> None:
     register(WhatwebParser())
     from agent_smith.executor.parsers.searchsploit_parser import SearchsploitParser
     register(SearchsploitParser())
+    from agent_smith.executor.parsers.kali_session_parser import KaliSessionParser
+    register(KaliSessionParser())
+    from agent_smith.executor.parsers.listener_parser import ListenerParser
+    register(ListenerParser())
+    from agent_smith.executor.parsers.session_exec_parser import SessionExecParser
+    register(SessionExecParser())
+    from agent_smith.executor.parsers.session_kill_parser import SessionKillParser
+    register(SessionKillParser())
 
 
 _register_builtins()
