@@ -31,6 +31,25 @@ def _build_substitutions(mission, profile) -> dict[str, str]:
     }
 
 
+async def _cleanup_kali_sessions(mission_id: str, ssh) -> None:
+    """Best-effort teardown of all tmux sessions this mission created on Kali.
+
+    Called from the v2 engine's finally block. Never raises — silent failure
+    if Kali is unreachable at shutdown is acceptable (operator can clean up
+    by hand via the agentsmith-<short_id>- naming convention).
+    """
+    try:
+        prefix = f"agentsmith-{mission_id[:8]}-"
+        cmd = (
+            f"tmux ls 2>/dev/null | "
+            f"grep -o '^{prefix}[^:]*' | "
+            f"xargs -r -I{{}} tmux kill-session -t {{}} 2>/dev/null"
+        )
+        await ssh.run_command(cmd, timeout=10)
+    except Exception:
+        return
+
+
 def _resolve_engine(mission) -> str:
     """Return 'v2' if the mission's playbook loads via the v2 loader, else 'v1'."""
     try:
@@ -158,6 +177,10 @@ async def _run_v2_engine(mission, profile, data_dir: Path, writer) -> None:
         )
         await controller.run()
     finally:
+        try:
+            await _cleanup_kali_sessions(mission.id, ssh)
+        except Exception:
+            pass
         try:
             await ssh.disconnect()
         except Exception:
