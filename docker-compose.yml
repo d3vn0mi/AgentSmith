@@ -1,12 +1,19 @@
 services:
-  agentsmith:
+  agentsmith-control:
+    image: agentsmith:latest
     build: .
-    container_name: agentsmith
+    command: ["python", "-m", "agent_smith", "control-plane"]
+    container_name: agentsmith-control
     env_file: .env
+    environment:
+      - AGENT_IMAGE=agentsmith:latest
+      - AGENT_NETWORK=agentsmith_internal
+      - DATA_DIR_HOST=${PWD}/data
+      - CONFIG_PATH_HOST=${PWD}/config.yaml
     volumes:
-      - ./config.yaml:/app/config.yaml:ro
+      - /var/run/docker.sock:/var/run/docker.sock
       - ./data:/app/data
-      - ${SSH_KEY_DIR:-~/.ssh}:/root/.ssh:ro
+      - ./config.yaml:/app/config.yaml:ro
     networks:
       - internal
     restart: unless-stopped
@@ -24,7 +31,7 @@ services:
     networks:
       - internal
     depends_on:
-      - agentsmith
+      - agentsmith-control
     restart: unless-stopped
 
   ollama:
@@ -44,4 +51,5 @@ volumes:
 
 networks:
   internal:
+    name: agentsmith_internal
     driver: bridge

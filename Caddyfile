@@ -1,16 +1,14 @@
 4g3ntsm1th.d3vn0mi.com {
     tls internal
-    reverse_proxy agentsmith:8080
+    reverse_proxy agentsmith-control:8080
     encode gzip
 
-    # WebSocket support
     @websocket {
         header Connection *Upgrade*
         header Upgrade websocket
     }
-    reverse_proxy @websocket agentsmith:8080
+    reverse_proxy @websocket agentsmith-control:8080
 
-    # Security headers
     header {
         X-Content-Type-Options nosniff
         X-Frame-Options DENY
