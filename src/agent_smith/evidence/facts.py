@@ -38,3 +38,66 @@ class Fact:
     def append_provenance(self, p: Provenance) -> None:
         self.provenance.append(p)
         self.last_seen_at = time.time()
+
+
+class Host:
+    TYPE = "Host"
+
+    @staticmethod
+    def new(
+        ip: str,
+        hostname: str | None = None,
+        os: str | None = None,
+        alive: bool = True,
+    ) -> Fact:
+        return Fact(
+            type=Host.TYPE,
+            payload={"ip": ip, "hostname": hostname, "os": os, "alive": alive},
+            canonical_key=f"host:{ip}",
+        )
+
+
+class OpenPort:
+    TYPE = "OpenPort"
+
+    @staticmethod
+    def new(
+        host_ip: str,
+        number: int,
+        protocol: str = "tcp",
+        service: str | None = None,
+        version: str | None = None,
+    ) -> Fact:
+        return Fact(
+            type=OpenPort.TYPE,
+            payload={
+                "host_ip": host_ip,
+                "number": number,
+                "protocol": protocol,
+                "service": service,
+                "version": version,
+            },
+            canonical_key=f"port:{host_ip}:{protocol}:{number}",
+        )
+
+
+class WebEndpoint:
+    TYPE = "WebEndpoint"
+
+    @staticmethod
+    def new(
+        url: str,
+        status: int,
+        title: str | None = None,
+        interesting: bool = False,
+    ) -> Fact:
+        return Fact(
+            type=WebEndpoint.TYPE,
+            payload={
+                "url": url,
+                "status": status,
+                "title": title,
+                "interesting": interesting,
+            },
+            canonical_key=f"web:{url}",
+        )
