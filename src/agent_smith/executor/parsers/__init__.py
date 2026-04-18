@@ -16,6 +16,15 @@ def get_parser(tool: str) -> Parser | None:
 
 def reset_for_tests() -> None:
     _REGISTRY.clear()
+    _register_builtins()
+
+
+def _register_builtins() -> None:
+    from agent_smith.executor.parsers.nmap_parser import NmapXmlParser
+    register(NmapXmlParser())
+
+
+_register_builtins()
 
 
 __all__ = ["Parser", "ToolRun", "register", "get_parser", "reset_for_tests"]
