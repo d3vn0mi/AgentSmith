@@ -95,338 +95,80 @@ function logout() {
     localStorage.removeItem('agentsmith_token');
     localStorage.removeItem('agentsmith_refresh');
     localStorage.removeItem('agentsmith_role');
-    if (state.ws) state.ws.close();
-    document.getElementById('login-screen').hidden = false;
-    document.getElementById('dashboard').hidden = true;
+    location.hash = '';
+    route();
 }
 
-/* ===== Dashboard ===== */
+/* ===== DOM helper — no innerHTML, ever ===== */
+function h(tag, attrs, children) {
+    const el = document.createElement(tag);
+    if (attrs) {
+        for (const [k, v] of Object.entries(attrs)) {
+            if (k === 'class') el.className = v;
+            else if (k === 'dataset') Object.assign(el.dataset, v);
+            else if (k.startsWith('on')) el[k.toLowerCase()] = v;
+            else if (k === 'hidden') { if (v) el.hidden = true; }
+            else if (v !== undefined && v !== null) el.setAttribute(k, v);
+        }
+    }
+    if (children != null) {
+        const kids = Array.isArray(children) ? children : [children];
+        for (const c of kids) {
+            if (c == null) continue;
+            el.appendChild(typeof c === 'string' ? document.createTextNode(c) : c);
+        }
+    }
+    return el;
+}
 
-async function showDashboard() {
+/* ===== Router ===== */
+const ROUTES = {};
+
+function parseHash() {
+    const raw = location.hash.slice(1) || 'missions';
+    const [name, ...rest] = raw.split('/');
+    return { name, args: rest };
+}
+
+function showPage(page) {
+    ['profiles', 'missions', 'mission-detail'].forEach(p => {
+        const el = document.getElementById('page-' + p);
+        if (el) el.hidden = (p !== page);
+    });
+}
+
+function route() {
+    if (!state.token) { showLogin(); return; }
     document.getElementById('login-screen').hidden = true;
-    document.getElementById('dashboard').hidden = false;
-    document.getElementById('user-info').textContent = `[${state.role}]`;
-
-    connectWebSocket();
-    loadInitialState();
-    startTimer();
-}
-
-function connectWebSocket() {
-    const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const wsUrl = `${protocol}//${location.host}/ws?token=${encodeURIComponent(state.token)}`;
-    state.ws = new WebSocket(wsUrl);
-
-    state.ws.onmessage = (event) => {
-        const msg = JSON.parse(event.data);
-        handleEvent(msg);
-    };
-
-    state.ws.onclose = () => {
-        setTimeout(connectWebSocket, 3000);
-    };
-
-    state.ws.onerror = () => {};
-}
-
-async function loadInitialState() {
-    try {
-        const [missionResp, evidenceResp, historyResp] = await Promise.all([
-            apiRequest('/api/mission'),
-            apiRequest('/api/evidence'),
-            apiRequest('/api/history?limit=100'),
-        ]);
-
-        if (missionResp.ok) {
-            const mission = await missionResp.json();
-            updateMission(mission);
-        }
-
-        if (evidenceResp.ok) {
-            const evidence = await evidenceResp.json();
-            updateEvidence(evidence);
-        }
-
-        if (historyResp.ok) {
-            const history = await historyResp.json();
-            const log = document.getElementById('command-log');
-            log.innerHTML = '';
-            history.forEach(entry => addCommandEntry(entry));
-        }
-    } catch (e) {
-        console.error('Failed to load initial state:', e);
+    document.getElementById('sidenav').hidden = false;
+    document.getElementById('app').hidden = false;
+    const { name, args } = parseHash();
+    if (name === 'mission' && args[0]) {
+        showPage('mission-detail');
+        ROUTES.mission && ROUTES.mission(args[0]);
+    } else if (ROUTES[name]) {
+        showPage(name);
+        ROUTES[name]();
+    } else {
+        location.hash = 'missions';
     }
 }
 
-/* ===== Event Handlers ===== */
-
-function handleEvent(msg) {
-    switch (msg.type) {
-        case 'command_executed':
-            addCommandEntry({
-                iteration: msg.data.iteration,
-                tool_name: msg.data.tool,
-                tool_args: msg.data.args,
-                output: msg.data.output,
-                thinking: msg.data.thinking || '',
-                timestamp: msg.timestamp,
-                success: msg.data.success,
-            });
-            break;
-
-        case 'command_executing':
-            addCommandEntry({
-                iteration: msg.data.iteration,
-                tool_name: msg.data.tool,
-                tool_args: msg.data.args,
-                output: '[Executing...]',
-                thinking: msg.data.thinking || '',
-                timestamp: msg.timestamp,
-                executing: true,
-            });
-            break;
-
-        case 'thought':
-        case 'thinking':
-            document.getElementById('thinking-text').textContent =
-                msg.data.thinking || 'Processing...';
-            break;
-
-        case 'evidence_updated':
-            updateEvidence(msg.data);
-            break;
-
-        case 'phase_changed':
-            updatePhase(msg.data.phase);
-            break;
-
-        case 'flag_captured':
-            showFlagNotification(msg.data.type, msg.data.value);
-            break;
-
-        case 'mission_complete':
-            document.getElementById('thinking-text').textContent =
-                'MISSION COMPLETE! Both flags captured.';
-            updatePhase('complete');
-            break;
-
-        case 'mission_started':
-            document.getElementById('target-display').textContent =
-                `Target: ${msg.data.target_ip}`;
-            state.startTime = Date.now();
-            break;
-    }
+function showLogin() {
+    document.getElementById('login-screen').hidden = false;
+    document.getElementById('sidenav').hidden = true;
+    document.getElementById('app').hidden = true;
 }
 
-/* ===== UI Updates ===== */
+window.addEventListener('hashchange', route);
+window.addEventListener('DOMContentLoaded', route);
 
-function addCommandEntry(entry) {
-    const log = document.getElementById('command-log');
-    const id = `cmd-${entry.iteration}`;
-
-    // Update existing entry if it exists (executing -> completed)
-    const existing = document.getElementById(id);
-    if (existing) {
-        existing.remove();
-    }
-
-    const time = new Date(entry.timestamp * 1000).toLocaleTimeString();
-    const success = entry.executing ? '' : (entry.success !== false ? 'success' : 'failure');
-    const statusText = entry.executing ? 'RUNNING' : (entry.success !== false ? 'OK' : 'FAIL');
-
-    const argsStr = typeof entry.tool_args === 'object'
-        ? JSON.stringify(entry.tool_args, null, 0)
-        : entry.tool_args || '';
-
-    const el = document.createElement('div');
-    el.className = 'cmd-entry';
-    el.id = id;
-    el.innerHTML = `
-        <div class="cmd-header" onclick="this.parentElement.classList.toggle('expanded')">
-            <span class="cmd-step">#${entry.iteration}</span>
-            <span class="cmd-tool">${entry.tool_name}</span>
-            <span class="cmd-status ${success}">${statusText}</span>
-            <span class="cmd-time">${time}</span>
-        </div>
-        ${entry.thinking ? `<div class="cmd-thinking">${escapeHtml(entry.thinking).substring(0, 200)}</div>` : ''}
-        <div class="cmd-output">${escapeHtml(entry.output || '')}</div>
-    `;
-
-    log.appendChild(el);
-    log.scrollTop = log.scrollHeight;
-
-    state.cmdCount++;
-    document.getElementById('cmd-count').textContent = state.cmdCount;
+function showDashboard() {
+    location.hash = 'missions';
+    route();
 }
 
-function updateMission(mission) {
-    updatePhase(mission.current_phase);
-    document.getElementById('target-display').textContent = `Target: ${mission.target_ip}`;
-    document.getElementById('iteration-display').textContent =
-        `Step: ${mission.iteration}/${mission.max_iterations}`;
-    state.paused = mission.paused;
-    document.getElementById('pause-btn').textContent = mission.paused ? 'Resume' : 'Pause';
-}
-
-function updatePhase(phase) {
-    const badge = document.getElementById('phase-badge');
-    badge.textContent = phase.toUpperCase().replace('_', ' ');
-    badge.className = `badge ${phase}`;
-}
-
-function updateEvidence(evidence) {
-    // Flags
-    const flagsEl = document.getElementById('flags-list');
-    if (Object.keys(evidence.flags).length > 0) {
-        flagsEl.innerHTML = Object.entries(evidence.flags)
-            .map(([type, val]) => `<div class="evidence-item flag-item">${type}: ${escapeHtml(val)}</div>`)
-            .join('');
-    }
-
-    // Ports
-    const portsEl = document.getElementById('ports-list');
-    if (evidence.ports && evidence.ports.length > 0) {
-        portsEl.innerHTML = evidence.ports
-            .map(p => `<div class="evidence-item port-item">${p.number}/${p.protocol} ${p.service}${p.version ? ' - ' + escapeHtml(p.version) : ''}</div>`)
-            .join('');
-    }
-
-    // Credentials
-    const credsEl = document.getElementById('creds-list');
-    if (evidence.credentials && evidence.credentials.length > 0) {
-        credsEl.innerHTML = evidence.credentials
-            .map(c => `<div class="evidence-item cred-item">${escapeHtml(c.username)} (${escapeHtml(c.context)}) [${c.source}]</div>`)
-            .join('');
-    }
-
-    // Vulnerabilities
-    const vulnsEl = document.getElementById('vulns-list');
-    if (evidence.vulnerabilities && evidence.vulnerabilities.length > 0) {
-        vulnsEl.innerHTML = evidence.vulnerabilities
-            .map(v => `<div class="evidence-item vuln-item">[${v.severity}] ${escapeHtml(v.name)} on ${escapeHtml(v.service)}</div>`)
-            .join('');
-    }
-
-    // Files
-    const filesEl = document.getElementById('files-list');
-    if (evidence.files_of_interest && evidence.files_of_interest.length > 0) {
-        filesEl.innerHTML = evidence.files_of_interest
-            .map(f => `<div class="evidence-item">${escapeHtml(f)}</div>`)
-            .join('');
-    }
-}
-
-function showFlagNotification(type, value) {
-    const label = type === 'user' ? 'USER FLAG' : 'ROOT FLAG';
-    const thinkingEl = document.getElementById('thinking-text');
-    thinkingEl.textContent = `${label} CAPTURED: ${value}`;
-    thinkingEl.style.color = '#22c55e';
-    setTimeout(() => { thinkingEl.style.color = ''; }, 10000);
-}
-
-/* ===== Controls ===== */
-
-async function togglePause() {
-    state.paused = !state.paused;
-    const action = state.paused ? 'pause' : 'resume';
-    await apiRequest('/api/control', {
-        method: 'POST',
-        body: JSON.stringify({ action }),
-    });
-    document.getElementById('pause-btn').textContent = state.paused ? 'Resume' : 'Pause';
-    document.getElementById('pause-btn').className = state.paused ? 'btn btn-primary' : 'btn btn-warning';
-}
-
-async function injectCommand() {
-    const tool = document.getElementById('inject-tool').value;
-    const input = document.getElementById('inject-input').value;
-    let args;
-    try {
-        args = JSON.parse(input);
-    } catch (e) {
-        // Treat as a shell command if JSON parsing fails
-        args = { command: input };
-    }
-
-    await apiRequest('/api/control', {
-        method: 'POST',
-        body: JSON.stringify({ action: 'inject', tool_name: tool, tool_args: args }),
-    });
-
-    document.getElementById('inject-input').value = '';
-}
-
-/* ===== Timer ===== */
-
-function startTimer() {
-    state.startTime = state.startTime || Date.now();
-    state.timerInterval = setInterval(() => {
-        const elapsed = Math.floor((Date.now() - state.startTime) / 1000);
-        const h = String(Math.floor(elapsed / 3600)).padStart(2, '0');
-        const m = String(Math.floor((elapsed % 3600) / 60)).padStart(2, '0');
-        const s = String(elapsed % 60).padStart(2, '0');
-        document.getElementById('elapsed-timer').textContent = `${h}:${m}:${s}`;
-    }, 1000);
-}
-
-/* ===== Utils ===== */
-
-function escapeHtml(str) {
-    if (!str) return '';
-    const div = document.createElement('div');
-    div.textContent = str;
-    return div.innerHTML;
-}
-
-/* ===== Init ===== */
-
-if (state.token) {
-    // Try to restore session
-    showDashboard();
-}
-
-// --- Phase 1: v2 assessments (read-only) ---
-async function v2LoadList() {
-  const res = await fetch("/api/v2/assessments");
-  if (!res.ok) return;
-  const items = await res.json();
-  const listEl = document.getElementById("v2-list");
-  if (!listEl) return;
-
-  // Clear existing children safely
-  while (listEl.firstChild) listEl.removeChild(listEl.firstChild);
-
-  if (items.length === 0) {
-    const em = document.createElement("em");
-    em.textContent = "no v2 assessments yet";
-    listEl.appendChild(em);
-    return;
-  }
-
-  for (const i of items) {
-    const btn = document.createElement("button");
-    btn.className = "v2-item";
-    btn.dataset.id = i.mission_id;
-    // textContent prevents any HTML interpretation of user-controlled fields
-    btn.textContent = i.playbook + " \u2192 " + i.target + " [" + i.status + "]";
-    btn.addEventListener("click", () => v2LoadGraph(i.mission_id));
-    listEl.appendChild(btn);
-  }
-}
-
-async function v2LoadGraph(missionId) {
-  const res = await fetch("/api/v2/assessments/" + encodeURIComponent(missionId) + "/graph");
-  const graphEl = document.getElementById("v2-graph-json");
-  if (!graphEl) return;
-  if (!res.ok) {
-    graphEl.textContent = "error: " + res.status;
-    return;
-  }
-  const g = await res.json();
-  graphEl.textContent = JSON.stringify(g, null, 2);
-}
-
-if (document.getElementById("v2-list")) {
-  v2LoadList();
-  setInterval(v2LoadList, 5000);
-}
+document.addEventListener('DOMContentLoaded', () => {
+    const btn = document.getElementById('logout-btn');
+    if (btn) btn.addEventListener('click', () => logout());
+});
