@@ -384,3 +384,49 @@ if (state.token) {
     // Try to restore session
     showDashboard();
 }
+
+// --- Phase 1: v2 assessments (read-only) ---
+async function v2LoadList() {
+  const res = await fetch("/api/v2/assessments");
+  if (!res.ok) return;
+  const items = await res.json();
+  const listEl = document.getElementById("v2-list");
+  if (!listEl) return;
+
+  // Clear existing children safely
+  while (listEl.firstChild) listEl.removeChild(listEl.firstChild);
+
+  if (items.length === 0) {
+    const em = document.createElement("em");
+    em.textContent = "no v2 assessments yet";
+    listEl.appendChild(em);
+    return;
+  }
+
+  for (const i of items) {
+    const btn = document.createElement("button");
+    btn.className = "v2-item";
+    btn.dataset.id = i.mission_id;
+    // textContent prevents any HTML interpretation of user-controlled fields
+    btn.textContent = i.playbook + " \u2192 " + i.target + " [" + i.status + "]";
+    btn.addEventListener("click", () => v2LoadGraph(i.mission_id));
+    listEl.appendChild(btn);
+  }
+}
+
+async function v2LoadGraph(missionId) {
+  const res = await fetch("/api/v2/assessments/" + encodeURIComponent(missionId) + "/graph");
+  const graphEl = document.getElementById("v2-graph-json");
+  if (!graphEl) return;
+  if (!res.ok) {
+    graphEl.textContent = "error: " + res.status;
+    return;
+  }
+  const g = await res.json();
+  graphEl.textContent = JSON.stringify(g, null, 2);
+}
+
+if (document.getElementById("v2-list")) {
+  v2LoadList();
+  setInterval(v2LoadList, 5000);
+}
