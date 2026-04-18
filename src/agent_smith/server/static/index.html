@@ -1,59 +1,21 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
     <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>AgentSmith</title>
-    <link rel="stylesheet" href="style.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap">
+    <link rel="stylesheet" href="/css/tokens.css">
+    <link rel="stylesheet" href="/css/base.css">
+    <link rel="stylesheet" href="/css/components.css">
+    <link rel="stylesheet" href="/css/app.css">
 </head>
 <body>
-    <section id="login-screen" class="login-container">
-        <form id="login-form">
-            <h2>AgentSmith</h2>
-            <input type="text" id="username" placeholder="Username" required autocomplete="username">
-            <input type="password" id="password" placeholder="Password" required autocomplete="current-password">
-            <button type="submit" id="login-btn">Login</button>
-            <p id="login-error" class="error" hidden></p>
-        </form>
-    </section>
-
-    <nav id="sidenav" hidden>
-        <a href="#missions">Missions</a>
-        <a href="#profiles">Profiles</a>
-        <button id="logout-btn">Logout</button>
-    </nav>
-
-    <main id="app" hidden>
-        <section id="page-profiles" hidden>
-            <h1>Kali Profiles</h1>
-            <ul id="profiles-list"></ul>
-            <button id="profile-add">+ Add profile</button>
-        </section>
-
-        <section id="page-missions" hidden>
-            <h1>Missions</h1>
-            <button id="mission-new">+ New mission</button>
-            <ul id="missions-list"></ul>
-        </section>
-
-        <section id="page-mission-detail" hidden>
-            <a href="#missions" id="mission-back">← back</a>
-            <h1 id="mission-title"></h1>
-            <div id="mission-header"></div>
-            <div id="mission-tabs">
-                <button data-tab="live" class="tab-active">Live</button>
-                <button data-tab="graph">Graph</button>
-                <button data-tab="evidence">Evidence</button>
-                <button data-tab="history">History</button>
-                <button id="mission-export">Export MD</button>
-                <button id="mission-stop">Stop</button>
-            </div>
-            <div id="mission-tab-live"></div>
-            <div id="mission-tab-graph" hidden></div>
-            <div id="mission-tab-evidence" hidden></div>
-            <div id="mission-tab-history" hidden></div>
-        </section>
-    </main>
-
-    <script src="app.js"></script>
+    <div id="app-root"></div>
+    <div id="modal-root"></div>
+    <div id="toast-root" role="region" aria-live="polite" aria-label="notifications"></div>
+    <script type="module" src="/js/main.js"></script>
 </body>
 </html>
