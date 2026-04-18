@@ -587,7 +587,6 @@ document.addEventListener('keydown', (ev) => {
         list.scrollTop = list.scrollHeight;
     }
 });
-}
 
 /* ===== Graph / Evidence / History ===== */
 async function loadGraphTab(id) {
