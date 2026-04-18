@@ -253,7 +253,7 @@ class Registry:
             f"UPDATE missions SET {', '.join(parts)} WHERE id=?", tuple(params))
 
     @staticmethod
-    def _row_to_mission(row) -> Mission:
+    def _row_to_mission(row: sqlite3.Row) -> Mission:
         return Mission(
             id=row["id"], name=row["name"], target=row["target"],
             playbook=row["playbook"],
@@ -311,7 +311,7 @@ class Registry:
             (status, _now(), exit_code, agent_id))
 
     @staticmethod
-    def _row_to_agent(row) -> Agent:
+    def _row_to_agent(row: sqlite3.Row) -> Agent:
         return Agent(
             id=row["id"], mission_id=row["mission_id"],
             container_id=row["container_id"],
