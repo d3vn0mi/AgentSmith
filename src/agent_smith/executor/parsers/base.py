@@ -25,5 +25,5 @@ class ToolRun:
 class Parser(Protocol):
     tool: str
 
-    def parse(self, run: ToolRun) -> list[Fact]:
+    def parse(self, run: ToolRun, context: dict | None = None) -> list[Fact]:
         ...

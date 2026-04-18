@@ -76,7 +76,10 @@ class Executor:
         if spec.parser:
             parser = get_parser(spec.parser)
             if parser is not None:
-                facts = parser.parse(tool_run)
+                facts = parser.parse(
+                    tool_run,
+                    context={"consumes": task.consumes},
+                )
                 for f in facts:
                     for prov in f.provenance:
                         if prov.task_id == "":

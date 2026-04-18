@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 class NmapXmlParser:
     tool = "nmap"
 
-    def parse(self, run: ToolRun) -> list[Fact]:
+    def parse(self, run: ToolRun, context: dict | None = None) -> list[Fact]:
         facts: list[Fact] = []
         try:
             root = ET.fromstring(run.stdout)
