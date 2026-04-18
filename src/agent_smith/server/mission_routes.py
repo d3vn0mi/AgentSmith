@@ -206,3 +206,22 @@ async def mission_ws(ws: WebSocket, mission_id: str, since: int = -1):
             last_size = cur
     except WebSocketDisconnect:
         return
+
+
+from fastapi.responses import Response
+
+from agent_smith.control import report as _report
+
+
+@router.get("/api/missions/{mission_id}/report.md")
+async def get_report(mission_id: str):
+    assert _registry and _data_dir is not None
+    if _registry.get_mission(mission_id) is None:
+        raise HTTPException(404)
+    md = _report.render(_registry, mission_id, data_dir=_data_dir)
+    filename = f"mission-{mission_id[:8]}.md"
+    return Response(
+        content=md,
+        media_type="text/markdown; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )

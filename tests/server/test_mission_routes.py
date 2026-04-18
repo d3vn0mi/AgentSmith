@@ -132,3 +132,14 @@ def test_ws_replays_from_since(ctx):
         e1 = ws.receive_json()
         e2 = ws.receive_json()
         assert [e1["seq"], e2["seq"]] == [1, 2]
+
+
+def test_report_md(ctx):
+    client, reg, profile, _, data_dir = ctx
+    mid = client.post("/api/missions", json={
+        "name": "r", "target": "t", "playbook": "pb.yaml",
+        "kali_profile_id": profile.id}).json()["id"]
+    resp = client.get(f"/api/missions/{mid}/report.md")
+    assert resp.status_code == 200
+    assert resp.headers["content-type"].startswith("text/markdown")
+    assert "# Mission: r" in resp.text
