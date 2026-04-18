@@ -550,3 +550,41 @@ function openMissionWS(id, sinceSeq) {
     };
     ws.onerror = () => {};
 }
+
+/* ===== Keyboard nav ===== */
+let focusedSeq = null;
+
+document.addEventListener('keydown', (ev) => {
+    const detailVisible =
+        !document.getElementById('page-mission-detail').hidden;
+    if (!detailVisible) return;
+    const list = document.getElementById('event-list');
+    if (!list) return;
+    const rows = [...list.querySelectorAll('.event-row')];
+    if (rows.length === 0) return;
+
+    if (ev.key === 'j' || ev.key === 'k') {
+        ev.preventDefault();
+        let idx = rows.findIndex(r => +r.dataset.seq === focusedSeq);
+        if (idx < 0) idx = ev.key === 'j' ? 0 : rows.length - 1;
+        else idx = Math.max(0, Math.min(rows.length - 1,
+                     idx + (ev.key === 'j' ? 1 : -1)));
+        rows.forEach(r => r.classList.remove('ev-focus'));
+        rows[idx].classList.add('ev-focus');
+        rows[idx].scrollIntoView({ block: 'nearest' });
+        focusedSeq = +rows[idx].dataset.seq;
+    } else if (ev.key === 'Enter' && focusedSeq != null) {
+        const e = detailState.buffer.items.find(x => x.seq === focusedSeq);
+        if (e) openEventDrawer(e);
+    } else if (ev.key === 'Escape') {
+        const d = document.getElementById('event-drawer');
+        if (d) d.remove();
+    } else if (ev.key === 'End') {
+        detailState.autoTail = true;
+        const banner = document.getElementById('tail-banner');
+        if (banner) banner.hidden = true;
+        renderEventList();
+        list.scrollTop = list.scrollHeight;
+    }
+});
+}
