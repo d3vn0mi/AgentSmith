@@ -22,6 +22,8 @@ def reset_for_tests() -> None:
 def _register_builtins() -> None:
     from agent_smith.executor.parsers.nmap_parser import NmapXmlParser
     register(NmapXmlParser())
+    from agent_smith.executor.parsers.ffuf_parser import FfufParser
+    register(FfufParser())
 
 
 _register_builtins()
