@@ -53,6 +53,18 @@ class Mission:
     ended_at: Optional[str]
 
 
+@dataclass(frozen=True)
+class Agent:
+    id: str
+    mission_id: str
+    container_id: Optional[str]
+    container_name: Optional[str]
+    status: str
+    started_at: Optional[str]
+    ended_at: Optional[str]
+    exit_code: Optional[int]
+
+
 class Registry:
     def __init__(self, path: str) -> None:
         self.path = path
@@ -250,3 +262,59 @@ class Registry:
             created_at=row["created_at"],
             started_at=row["started_at"], ended_at=row["ended_at"],
         )
+
+    # ---- Agent CRUD ----
+
+    def create_agent(self, *, mission_id: str) -> Agent:
+        aid = _new_id()
+        self._conn.execute(
+            "INSERT INTO agents (id, mission_id, status) VALUES (?, ?, 'pending')",
+            (aid, mission_id),
+        )
+        result = self.get_agent(aid)
+        if result is None:
+            raise RegistryError("agent insert ok but load None")
+        return result
+
+    def get_agent(self, agent_id: str) -> Optional[Agent]:
+        row = self._conn.execute(
+            "SELECT * FROM agents WHERE id=?", (agent_id,)).fetchone()
+        return self._row_to_agent(row) if row else None
+
+    def list_agents(self, *, statuses: tuple[str, ...] = ()) -> list[Agent]:
+        if statuses:
+            placeholders = ", ".join("?" * len(statuses))
+            rows = self._conn.execute(
+                f"SELECT * FROM agents WHERE status IN ({placeholders})",
+                statuses).fetchall()
+        else:
+            rows = self._conn.execute("SELECT * FROM agents").fetchall()
+        return [self._row_to_agent(r) for r in rows]
+
+    def list_agents_for_mission(self, mission_id: str) -> list[Agent]:
+        rows = self._conn.execute(
+            "SELECT * FROM agents WHERE mission_id=?", (mission_id,)
+        ).fetchall()
+        return [self._row_to_agent(r) for r in rows]
+
+    def set_agent_running(self, agent_id, *, container_id, container_name) -> None:
+        self._conn.execute(
+            """UPDATE agents
+               SET container_id=?, container_name=?, status='running',
+                   started_at=?
+               WHERE id=?""",
+            (container_id, container_name, _now(), agent_id))
+
+    def close_agent(self, agent_id, *, status, exit_code=None) -> None:
+        self._conn.execute(
+            "UPDATE agents SET status=?, ended_at=?, exit_code=? WHERE id=?",
+            (status, _now(), exit_code, agent_id))
+
+    @staticmethod
+    def _row_to_agent(row) -> Agent:
+        return Agent(
+            id=row["id"], mission_id=row["mission_id"],
+            container_id=row["container_id"],
+            container_name=row["container_name"],
+            status=row["status"], started_at=row["started_at"],
+            ended_at=row["ended_at"], exit_code=row["exit_code"])

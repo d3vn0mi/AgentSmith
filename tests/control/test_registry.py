@@ -101,3 +101,42 @@ def test_set_mission_status_terminal(db):
     fresh = db.get_mission(m.id)
     assert fresh.status == "completed"
     assert fresh.ended_at is not None
+
+
+def test_create_and_update_agent(db):
+    p = _mk_profile(db)
+    m = db.create_mission(name="x", target="t", playbook="pb",
+                          kali_profile_id=p.id, agent_config={})
+    a = db.create_agent(mission_id=m.id)
+    assert a.status == "pending"
+    assert a.container_id is None
+
+    db.set_agent_running(a.id, container_id="cid-123",
+                          container_name="agentsmith-agent-x")
+    fresh = db.get_agent(a.id)
+    assert fresh.status == "running"
+    assert fresh.container_id == "cid-123"
+
+
+def test_close_agent(db):
+    p = _mk_profile(db)
+    m = db.create_mission(name="x", target="t", playbook="pb",
+                          kali_profile_id=p.id, agent_config={})
+    a = db.create_agent(mission_id=m.id)
+    db.set_agent_running(a.id, container_id="c", container_name="n")
+    db.close_agent(a.id, status="exited", exit_code=0)
+    fresh = db.get_agent(a.id)
+    assert fresh.status == "exited"
+    assert fresh.exit_code == 0
+    assert fresh.ended_at is not None
+
+
+def test_list_agents_by_status(db):
+    p = _mk_profile(db)
+    m = db.create_mission(name="x", target="t", playbook="pb",
+                          kali_profile_id=p.id, agent_config={})
+    a1 = db.create_agent(mission_id=m.id)
+    a2 = db.create_agent(mission_id=m.id)
+    db.set_agent_running(a1.id, container_id="c1", container_name="n1")
+    running = db.list_agents(statuses=("pending", "running"))
+    assert {a.id for a in running} == {a1.id, a2.id}
