@@ -120,3 +120,15 @@ def test_events_filter_types(ctx):
     _seed_events(data_dir, mid, 6)
     resp = client.get(f"/api/missions/{mid}/events?types=tool.run_started&limit=10")
     assert {e["type"] for e in resp.json()} == {"tool.run_started"}
+
+
+def test_ws_replays_from_since(ctx):
+    client, reg, profile, _, data_dir = ctx
+    mid = client.post("/api/missions", json={
+        "name": "x", "target": "t", "playbook": "pb.yaml",
+        "kali_profile_id": profile.id}).json()["id"]
+    _seed_events(data_dir, mid, 3)
+    with client.websocket_connect(f"/ws/missions/{mid}?since=0") as ws:
+        e1 = ws.receive_json()
+        e2 = ws.receive_json()
+        assert [e1["seq"], e2["seq"]] == [1, 2]

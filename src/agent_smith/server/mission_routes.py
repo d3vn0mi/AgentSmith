@@ -168,3 +168,41 @@ async def get_events(
     start = after if after is not None else -1
     slc = [e for e in events if e.get("seq", -1) > start]
     return slc[:limit]
+
+
+import asyncio as _asyncio
+
+from fastapi import WebSocket, WebSocketDisconnect
+
+
+@router.websocket("/ws/missions/{mission_id}")
+async def mission_ws(ws: WebSocket, mission_id: str, since: int = -1):
+    assert _registry and _data_dir is not None
+    if _registry.get_mission(mission_id) is None:
+        await ws.close(code=4404)
+        return
+    await ws.accept()
+
+    events_path = _data_dir / "missions" / mission_id / "events.jsonl"
+    for e in _iter_events(events_path):
+        if e.get("seq", -1) > since:
+            await ws.send_json(e)
+            since = e.get("seq", since)
+    last_size = events_path.stat().st_size if events_path.exists() else 0
+
+    try:
+        while True:
+            await _asyncio.sleep(0.25)
+            if not events_path.exists():
+                continue
+            cur = events_path.stat().st_size
+            if cur == last_size:
+                continue
+            for e in _iter_events(events_path):
+                seq = e.get("seq", -1)
+                if seq > since:
+                    since = seq
+                    await ws.send_json(e)
+            last_size = cur
+    except WebSocketDisconnect:
+        return
