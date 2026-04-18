@@ -198,6 +198,15 @@ export async function renderMissionDetail(id) {
     state.missionId = id;
     state.buffer = new EventBuffer({ capacity: 500 });
 
+    // Skeleton placeholder while the mission fetch is in flight.
+    renderShell(h('div', { class: 'mission-detail' }, [
+        h('div', { class: 'card' }, h('span', {
+            class: 'skeleton',
+            style: { width: '12em', height: '1.5em' },
+        })),
+        h('div', { class: 'empty-state' }, 'Loading mission…'),
+    ]));
+
     const resp = await apiRequest(`/api/missions/${id}`);
     if (!resp.ok) {
         toast.error('Mission not found');
