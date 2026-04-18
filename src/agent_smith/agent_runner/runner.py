@@ -9,10 +9,26 @@ import sys
 import traceback
 from pathlib import Path
 
+import hashlib
+
 from agent_smith.agent_runner.bridge import EventBridge
 from agent_smith.agent_runner.event_writer import EventWriter
 from agent_smith.control import crypto, registry
 from agent_smith.events import EventBus
+
+
+def _build_substitutions(mission, profile) -> dict[str, str]:
+    """Mission-scope placeholder substitutions for v2 playbook root args."""
+    return {
+        "${TARGET}": mission.target,
+        "${MISSION_SHORT_ID}": mission.id[:8],
+        "${MISSION_RANGE_OFFSET}": str(
+            int.from_bytes(
+                hashlib.sha256(mission.id.encode()).digest()[:4], "big"
+            ) % 80
+        ),
+        "${CALLBACK_IP}": getattr(profile, "callback_ip", None) or "",
+    }
 
 
 def _resolve_engine(mission) -> str:
@@ -114,14 +130,17 @@ async def _run_v2_engine(mission, profile, data_dir: Path, writer) -> None:
     pb_path = Path("src/agent_smith/playbooks") / mission.playbook
     pb = load_playbook(pb_path)
 
-    # Pre-substitute ${TARGET} in root task args so the command template
-    # renders the correct IP. The v2 engine runs commands on the remote SSH
+    # Pre-substitute placeholders in root task args so the command template
+    # renders the correct values. The v2 engine runs commands on the remote SSH
     # host via asyncssh (no shell env forwarding), so substitution must
     # happen locally before the command is built.
+    SUBSTITUTIONS = _build_substitutions(mission, profile)
     for root in pb.root_tasks:
         for k, v in list(root.args.items()):
             if isinstance(v, str):
-                root.args[k] = v.replace("${TARGET}", mission.target)
+                for ph, val in SUBSTITUTIONS.items():
+                    v = v.replace(ph, val)
+                root.args[k] = v
 
     mission_dir = data_dir / "missions" / mission.id
     bus = V2Bus()
