@@ -101,3 +101,62 @@ class WebEndpoint:
             },
             canonical_key=f"web:{url}",
         )
+
+
+class DirPath:
+    TYPE = "DirPath"
+
+    @staticmethod
+    def new(
+        host: str,
+        port: int,
+        url: str,
+        status: int,
+        size: int | None = None,
+    ) -> Fact:
+        return Fact(
+            type=DirPath.TYPE,
+            payload={"host": host, "port": port, "url": url,
+                      "status": status, "size": size},
+            canonical_key=f"dir:{url}",
+        )
+
+
+class WebTech:
+    TYPE = "WebTech"
+
+    @staticmethod
+    def new(
+        host: str,
+        port: int,
+        software: str,
+        version: str | None = None,
+    ) -> Fact:
+        slug = software.lower().replace(" ", "-")
+        return Fact(
+            type=WebTech.TYPE,
+            payload={"host": host, "port": port,
+                      "software": software, "version": version},
+            canonical_key=f"tech:{host}:{port}:{slug}",
+        )
+
+
+class Vulnerability:
+    TYPE = "Vulnerability"
+
+    @staticmethod
+    def new(
+        subject_id: str,
+        name: str,
+        severity: str = "unknown",
+        exploit_path: str | None = None,
+        cve: str | None = None,
+    ) -> Fact:
+        ident = cve or name
+        return Fact(
+            type=Vulnerability.TYPE,
+            payload={"subject_id": subject_id, "name": name,
+                      "severity": severity,
+                      "exploit_path": exploit_path, "cve": cve},
+            canonical_key=f"vuln:{subject_id}:{ident}",
+        )
