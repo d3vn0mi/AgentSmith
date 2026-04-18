@@ -82,12 +82,8 @@ task_types:
 
 expansions:
   - id: exec-after-start
-    on_fact: "KaliSession{status: starting}"
-    spawn: [session_exec]
-
-  - id: kill-after-exec
     on_fact: "KaliSession{status: live}"
-    spawn: [session_kill]
+    spawn: [session_exec]
 
 terminations:
   - scope_exhausted

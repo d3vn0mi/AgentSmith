@@ -90,10 +90,7 @@ async def test_kali_session_demo_runs_end_to_end(tmp_path):
         f"SSH calls made: {len(ssh.calls)}"
     )
 
-    # session_start emits KaliSession{status: starting}.
-    # The expansion chain (exec-after-start → session_exec) may or may not fire
-    # depending on whether the consumes predicate `KaliSession{status: live}` is
-    # satisfied. Either way, at minimum "starting" must be present (possibly
-    # superseded to "dead" if kill-after-exec fires).
-    statuses = {f.payload["status"] for f in facts if f.type == "KaliSession"}
-    assert "starting" in statuses or "live" in statuses or "dead" in statuses
+    # With the fixed expansion rule, session_start emits live → exec-after-start
+    # spawns session_exec → consumes the live session (no fact emitted on
+    # successful exec). The store should contain exactly one live KaliSession.
+    assert any(f.payload["status"] == "live" for f in sessions)

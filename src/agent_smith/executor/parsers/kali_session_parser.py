@@ -22,6 +22,6 @@ class KaliSessionParser:
         return [KaliSession.new(
             session_id=session_id,
             role=str(args.get("role") or ""),
-            status="starting",
+            status="live",
             kali_host=str(args.get("kali_host") or ""),
         )]

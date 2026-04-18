@@ -26,7 +26,7 @@ def test_ok_line_emits_session():
     assert f.type == "KaliSession"
     assert f.payload["session_id"] == "agentsmith-abc12345-runner-1234"
     assert f.payload["role"] == "runner"
-    assert f.payload["status"] == "starting"
+    assert f.payload["status"] == "live"
     assert f.payload["kali_host"] == "10.0.0.5"
 
 
