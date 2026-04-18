@@ -2,15 +2,20 @@
 
 from __future__ import annotations
 
+import logging
+import os
 from pathlib import Path
 from typing import Annotated
 
+import docker
 from fastapi import Depends, FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 
 from agent_smith.auth.dependencies import configure_auth, get_ws_user
 from agent_smith.auth.models import User, UserStore
+from agent_smith.control import crypto, recovery, registry
+from agent_smith.control.spawner import Spawner
 from agent_smith.core.config import Config
 from agent_smith.events import EventBus
 from agent_smith.server.auth_routes import configure_auth_routes, router as auth_router
@@ -86,5 +91,80 @@ def create_app(
             return FileResponse(static_dir / "index.html")
 
         app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
+
+    return app
+
+
+def _ensure_master_key(env_path: Path = Path(".env")) -> str:
+    key = os.environ.get("MASTER_KEY")
+    if key:
+        return key
+    key_str = crypto.generate_key().decode()
+    os.environ["MASTER_KEY"] = key_str
+    if env_path.exists():
+        contents = env_path.read_text()
+        if "MASTER_KEY=" not in contents:
+            with env_path.open("a") as fh:
+                fh.write(f"\nMASTER_KEY={key_str}\n")
+    logger = logging.getLogger("agent_smith")
+    logger.warning(
+        "Generated new MASTER_KEY and persisted to %s. "
+        "BACK THIS UP — losing it makes all saved Kali creds unrecoverable.",
+        env_path,
+    )
+    return key_str
+
+
+def create_control_plane_app(config: Config) -> FastAPI:
+    """Build the FastAPI app for the control-plane process."""
+    db_path = Path("data/registry.db")
+    db_path.parent.mkdir(parents=True, exist_ok=True)
+    reg = registry.Registry(str(db_path))
+    reg.migrate()
+
+    master_key = _ensure_master_key()
+
+    docker_client = docker.from_env()
+    spawner = Spawner(
+        client=docker_client,
+        image=os.environ.get("AGENT_IMAGE", "agentsmith:latest"),
+        network=os.environ.get("AGENT_NETWORK", "agentsmith_internal"),
+        data_dir_host=os.environ.get(
+            "DATA_DIR_HOST", str(Path("data").resolve())),
+        config_path_host=os.environ.get(
+            "CONFIG_PATH_HOST", str(Path("config.yaml").resolve())),
+        master_key=master_key,
+        extra_env={k: v for k, v in os.environ.items()
+                    if k in ("ANTHROPIC_API_KEY", "OPENAI_API_KEY",
+                              "OLLAMA_BASE_URL")},
+    )
+
+    data_dir = Path("data")
+    recovery.reconcile(reg, spawner, data_dir=data_dir)
+
+    app = FastAPI(title="AgentSmith Control Plane")
+
+    user_store = UserStore(config.auth.users_file)
+    configure_auth_routes(
+        jwt_secret=config.auth.jwt_secret,
+        access_expiry=config.auth.access_token_expiry,
+        refresh_expiry=config.auth.refresh_token_expiry,
+        user_store=user_store,
+    )
+    app.include_router(auth_router)
+
+    # Deferred imports — these modules are added in Tasks 12 and 13.
+    from agent_smith.server.profile_routes import (
+        router as profile_router, configure as configure_profile_routes)
+    from agent_smith.server.mission_routes import (
+        router as mission_router, configure as configure_mission_routes)
+    configure_profile_routes(reg)
+    configure_mission_routes(reg, spawner, data_dir=data_dir)
+    app.include_router(profile_router)
+    app.include_router(mission_router)
+
+    static_dir = Path(__file__).parent / "static"
+    app.mount("/", StaticFiles(directory=str(static_dir), html=True),
+               name="static")
 
     return app
