@@ -67,6 +67,7 @@ def _load_task_types(raw: Any) -> dict[str, TaskTypeSpec]:
             risk=body.get("risk", "low"),
             timeout=int(body.get("timeout", 300)),
             parser=body.get("parser"),
+            command_template=body.get("command_template"),
             cache_key=body.get("cache_key"),
             requires_tier2=bool(body.get("requires_tier2", False)),
             metadata=dict(body.get("metadata", {})),

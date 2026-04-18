@@ -42,7 +42,12 @@ def default_command_builder(spec: TaskTypeSpec, args: dict[str, Any]) -> str:
     MissionController._render_args (for spawned tasks) or carries root-task
     literal values. The template keys in spec.args_template identify which
     args are meaningful; values come from `args`.
+
+    If spec.command_template is set, it is rendered via str.format(**args)
+    and returned directly instead of the default --key=value style.
     """
+    if spec.command_template:
+        return spec.command_template.format(**args)
     parts: list[str] = [spec.tool]
     for key in spec.args_template.keys():
         if key in args:

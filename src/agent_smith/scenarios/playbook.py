@@ -15,6 +15,7 @@ class TaskTypeSpec:
     risk: str = "low"
     timeout: int = 300
     parser: str | None = None
+    command_template: str | None = None
     cache_key: str | None = None
     requires_tier2: bool = False
     metadata: dict[str, Any] = field(default_factory=dict)
