@@ -39,6 +39,20 @@ class KaliProfile:
     updated_at: str
 
 
+@dataclass(frozen=True)
+class Mission:
+    id: str
+    name: str
+    target: str
+    playbook: str
+    kali_profile_id: str
+    status: str
+    agent_config: dict
+    created_at: str
+    started_at: Optional[str]
+    ended_at: Optional[str]
+
+
 class Registry:
     def __init__(self, path: str) -> None:
         self.path = path
@@ -174,4 +188,65 @@ class Registry:
             username=row["username"], auth_type=row["auth_type"],
             credential_enc=bytes(row["credential_enc"]),
             created_at=row["created_at"], updated_at=row["updated_at"],
+        )
+
+    # ---- Mission CRUD ----
+
+    def create_mission(self, *, name, target, playbook,
+                        kali_profile_id, agent_config) -> Mission:
+        mid = _new_id()
+        now = _now()
+        try:
+            self._conn.execute(
+                """INSERT INTO missions
+                   (id, name, target, playbook, kali_profile_id, status,
+                    agent_config_json, created_at)
+                   VALUES (?, ?, ?, ?, ?, 'created', ?, ?)""",
+                (mid, name, target, playbook, kali_profile_id,
+                 json.dumps(agent_config), now),
+            )
+        except sqlite3.IntegrityError as exc:
+            raise RegistryError(f"mission insert failed: {exc}") from exc
+        result = self.get_mission(mid)
+        if result is None:
+            raise RegistryError("insert ok but load None")
+        return result
+
+    def get_mission(self, mission_id: str) -> Optional[Mission]:
+        row = self._conn.execute(
+            "SELECT * FROM missions WHERE id=?", (mission_id,)
+        ).fetchone()
+        return self._row_to_mission(row) if row else None
+
+    def list_missions(self, *, status: Optional[str] = None) -> list[Mission]:
+        if status:
+            rows = self._conn.execute(
+                "SELECT * FROM missions WHERE status=? ORDER BY created_at DESC",
+                (status,)).fetchall()
+        else:
+            rows = self._conn.execute(
+                "SELECT * FROM missions ORDER BY created_at DESC").fetchall()
+        return [self._row_to_mission(r) for r in rows]
+
+    def set_mission_status(self, mission_id, status, *,
+                            started_at=False, ended_at=False) -> None:
+        parts = ["status=?"]
+        params: list = [status]
+        if started_at:
+            parts.append("started_at=?"); params.append(_now())
+        if ended_at:
+            parts.append("ended_at=?"); params.append(_now())
+        params.append(mission_id)
+        self._conn.execute(
+            f"UPDATE missions SET {', '.join(parts)} WHERE id=?", tuple(params))
+
+    @staticmethod
+    def _row_to_mission(row) -> Mission:
+        return Mission(
+            id=row["id"], name=row["name"], target=row["target"],
+            playbook=row["playbook"],
+            kali_profile_id=row["kali_profile_id"], status=row["status"],
+            agent_config=json.loads(row["agent_config_json"]),
+            created_at=row["created_at"],
+            started_at=row["started_at"], ended_at=row["ended_at"],
         )

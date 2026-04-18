@@ -60,3 +60,44 @@ def test_delete_profile(db):
                            auth_type="key", credential_enc=b"x")
     db.delete_profile(p.id)
     assert db.get_profile(p.id) is None
+
+
+def _mk_profile(db):
+    return db.create_profile(name="p", host="h", port=22, username="u",
+                              auth_type="key", credential_enc=b"x")
+
+
+def test_create_mission(db):
+    profile = _mk_profile(db)
+    m = db.create_mission(name="HTB Paper", target="10.129.0.1",
+                           playbook="skeleton_portscan.yaml",
+                           kali_profile_id=profile.id,
+                           agent_config={"max_iterations": 50})
+    assert m.id
+    assert m.status == "created"
+    assert m.agent_config == {"max_iterations": 50}
+
+
+def test_list_missions_filter_by_status(db):
+    p = _mk_profile(db)
+    m1 = db.create_mission(name="a", target="t", playbook="pb",
+                            kali_profile_id=p.id, agent_config={})
+    m2 = db.create_mission(name="b", target="t", playbook="pb",
+                            kali_profile_id=p.id, agent_config={})
+    db.set_mission_status(m1.id, "running", started_at=True)
+
+    running = db.list_missions(status="running")
+    assert [m.id for m in running] == [m1.id]
+    all_ms = db.list_missions()
+    assert {m.id for m in all_ms} == {m1.id, m2.id}
+
+
+def test_set_mission_status_terminal(db):
+    p = _mk_profile(db)
+    m = db.create_mission(name="x", target="t", playbook="pb",
+                          kali_profile_id=p.id, agent_config={})
+    db.set_mission_status(m.id, "running", started_at=True)
+    db.set_mission_status(m.id, "completed", ended_at=True)
+    fresh = db.get_mission(m.id)
+    assert fresh.status == "completed"
+    assert fresh.ended_at is not None
