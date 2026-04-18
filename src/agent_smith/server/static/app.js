@@ -588,3 +588,69 @@ document.addEventListener('keydown', (ev) => {
     }
 });
 }
+
+/* ===== Graph / Evidence / History ===== */
+async function loadGraphTab(id) {
+    const resp = await apiRequest(`/api/v2/assessments/${id}/graph`);
+    const container = document.getElementById('mission-tab-graph');
+    container.replaceChildren();
+    const pre = h('pre');
+    pre.textContent = resp.ok
+        ? JSON.stringify(await resp.json(), null, 2)
+        : '(no graph)';
+    container.appendChild(pre);
+}
+
+async function loadEvidenceTab(id) {
+    const resp = await apiRequest(
+        `/api/missions/${id}/events?types=evidence.added&limit=1000`);
+    const container = document.getElementById('mission-tab-evidence');
+    container.replaceChildren();
+    if (!resp.ok) {
+        container.appendChild(document.createTextNode('failed'));
+        return;
+    }
+    const list = await resp.json();
+    if (list.length === 0) {
+        container.appendChild(document.createTextNode('no evidence yet'));
+        return;
+    }
+    const ul = h('ul');
+    for (const e of list) {
+        ul.appendChild(h('li', null,
+            `[${e.data.category || '?'}] ${JSON.stringify(e.data.item)}`));
+    }
+    container.appendChild(ul);
+}
+
+async function loadHistoryTab(id) {
+    const resp = await apiRequest(
+        `/api/missions/${id}/events?types=tool.run_finished&limit=1000`);
+    const container = document.getElementById('mission-tab-history');
+    container.replaceChildren();
+    if (!resp.ok) {
+        container.appendChild(document.createTextNode('failed'));
+        return;
+    }
+    const list = await resp.json();
+    if (list.length === 0) {
+        container.appendChild(document.createTextNode('no commands yet'));
+        return;
+    }
+    const table = h('table');
+    const head = h('tr', null, [
+        h('th', null, 'ts'), h('th', null, 'tool'),
+        h('th', null, 'exit'), h('th', null, 'preview'),
+    ]);
+    table.appendChild(head);
+    for (const e of list) {
+        const row = h('tr', null, [
+            h('td', null, e.ts),
+            h('td', null, e.data.tool || ''),
+            h('td', null, String(e.data.exit_code ?? '')),
+            h('td', null, (e.data.stdout_preview || '').slice(0, 80)),
+        ]);
+        table.appendChild(row);
+    }
+    container.appendChild(table);
+}
