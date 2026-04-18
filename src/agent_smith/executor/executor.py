@@ -36,13 +36,17 @@ CommandBuilder = Callable[[TaskTypeSpec, dict[str, Any]], str]
 
 
 def default_command_builder(spec: TaskTypeSpec, args: dict[str, Any]) -> str:
+    """Render args_template keys as --key=value pairs, using already-resolved args.
+
+    By the time the Executor calls this, `args` has been rendered by
+    MissionController._render_args (for spawned tasks) or carries root-task
+    literal values. The template keys in spec.args_template identify which
+    args are meaningful; values come from `args`.
+    """
     parts: list[str] = [spec.tool]
-    for key, template in spec.args_template.items():
-        if isinstance(template, str):
-            rendered = template.format(**args)
-        else:
-            rendered = str(template)
-        parts.append(f"--{key}={rendered}")
+    for key in spec.args_template.keys():
+        if key in args:
+            parts.append(f"--{key}={args[key]}")
     return " ".join(parts)
 
 

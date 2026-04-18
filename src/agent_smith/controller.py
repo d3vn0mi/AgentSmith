@@ -109,6 +109,12 @@ class MissionController:
         try:
             result = await self.executor.run(task, spec)
         except Exception as exc:
+            await self.bus.publish(Event(
+                event_type=EventType.TOOL_RUN_COMPLETE,
+                mission_id=self.mission_id,
+                task_id=task.id,
+                payload={"error": str(exc), "failed": True},
+            ))
             task.transition(TaskState.FAILED)
             await self.bus.publish(Event(
                 event_type=EventType.TASK_FAILED,
@@ -131,10 +137,14 @@ class MissionController:
 
         for fact in result.facts:
             insert_result = self.evidence.insert(fact)
+            if insert_result.inserted:
+                event_type = EventType.FACT_EMITTED
+            elif insert_result.superseded:
+                event_type = EventType.FACT_SUPERSEDED
+            else:
+                event_type = EventType.FACT_UPDATED
             await self.bus.publish(Event(
-                event_type=(
-                    EventType.FACT_EMITTED if insert_result.inserted else EventType.FACT_UPDATED
-                ),
+                event_type=event_type,
                 mission_id=self.mission_id,
                 task_id=task.id,
                 payload={

@@ -91,3 +91,20 @@ async def test_executor_writes_stdout_file(port_scan_spec, tmp_path: Path):
     stdout_file = tmp_path / "tool_runs" / f"{result.tool_run.run_id}.stdout"
     assert stdout_file.exists()
     assert "nmaprun" in stdout_file.read_text()
+
+
+def test_default_command_builder_handles_prerendered_args():
+    """Spawned tasks have args pre-rendered by _render_args; the default
+    builder must not try to re-render template placeholders."""
+    from agent_smith.executor.executor import default_command_builder
+    spec = TaskTypeSpec(
+        name="web_probe",
+        consumes={"host": "Host", "port": "OpenPort{service: http|https}"},
+        produces=[],
+        tool="curl",
+        args_template={"url": "http://{host.ip}:{port.number}"},
+    )
+    args = {"url": "http://10.0.0.5:80"}  # already rendered by controller
+    cmd = default_command_builder(spec, args)
+    assert "curl" in cmd
+    assert "--url=http://10.0.0.5:80" in cmd
