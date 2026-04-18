@@ -8,7 +8,7 @@ import { renderMissionDetail } from './missions/detail.js';
 import { renderProfiles } from './profiles.js';
 import { renderPlaybooks } from './playbooks.js';
 import { h } from './dom.js';
-import './shortcuts.js';
+import * as sc from './shortcuts.js';
 
 /**
  * Gate a route renderer on a valid access token.
@@ -38,5 +38,9 @@ router.register('missions', requireAuth(() => renderMissionList()));
 router.register('profiles',  requireAuth(() => renderProfiles()));
 router.register('playbooks', requireAuth(() => renderPlaybooks()));
 router.register('mission', requireAuth((id) => renderMissionDetail(id)));
+
+sc.register('m', () => router.navigate('missions'),  { label: 'Go to Missions',  group: 'navigation' });
+sc.register('p', () => router.navigate('profiles'),  { label: 'Go to Profiles',  group: 'navigation' });
+sc.register('b', () => router.navigate('playbooks'), { label: 'Go to Playbooks', group: 'navigation' });
 
 document.addEventListener('DOMContentLoaded', () => router.route());
