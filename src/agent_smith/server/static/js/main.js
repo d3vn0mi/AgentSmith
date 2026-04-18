@@ -6,6 +6,7 @@ import { renderLogin } from './login.js';
 import { renderMissionList } from './missions/list.js';
 import { renderMissionDetail } from './missions/detail.js';
 import { renderProfiles } from './profiles.js';
+import { renderPlaybooks } from './playbooks.js';
 import { h } from './dom.js';
 import './shortcuts.js';
 
@@ -35,7 +36,7 @@ function requireAuth(fn) {
 router.register('login', renderLogin);
 router.register('missions', requireAuth(() => renderMissionList()));
 router.register('profiles',  requireAuth(() => renderProfiles()));
-router.register('playbooks', requireAuth(() => renderShell(h('div', { class: 'empty-state' }, 'Playbooks — Phase 4'))));
+router.register('playbooks', requireAuth(() => renderPlaybooks()));
 router.register('mission', requireAuth((id) => renderMissionDetail(id)));
 
 document.addEventListener('DOMContentLoaded', () => router.route());

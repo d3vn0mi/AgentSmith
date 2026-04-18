@@ -281,3 +281,15 @@
     border-radius: 3px;
     font-size: 12px;
 }
+
+/* ---------- Playbooks catalog ---------- */
+.playbook-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: var(--space-4);
+}
+.playbook-card { display: flex; flex-direction: column; gap: var(--space-2); }
+.playbook-head { display: flex; gap: var(--space-3); align-items: center; }
+.playbook-title { font-weight: 600; font-size: 15px; }
+.playbook-phases { display: flex; flex-wrap: wrap; gap: var(--space-1); }
+.playbook-file { font-size: 11px; margin-top: var(--space-2); }
