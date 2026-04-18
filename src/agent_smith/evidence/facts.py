@@ -160,3 +160,55 @@ class Vulnerability:
                       "exploit_path": exploit_path, "cve": cve},
             canonical_key=f"vuln:{subject_id}:{ident}",
         )
+
+
+class KaliSession:
+    TYPE = "KaliSession"
+
+    @staticmethod
+    def new(
+        session_id: str,
+        role: str,
+        status: str,
+        kali_host: str,
+        metadata: dict | None = None,
+    ) -> Fact:
+        return Fact(
+            type=KaliSession.TYPE,
+            payload={
+                "session_id": session_id,
+                "role": role,
+                "status": status,
+                "kali_host": kali_host,
+                "metadata": metadata or {},
+            },
+            canonical_key=f"session:{session_id}",
+        )
+
+
+class Shell:
+    TYPE = "Shell"
+
+    @staticmethod
+    def new(
+        session_id: str,
+        target_host: str,
+        listener_port: int,
+        callback_ip: str,
+        target_user: str | None = None,
+        interactive: bool = False,
+        status: str = "live",
+    ) -> Fact:
+        return Fact(
+            type=Shell.TYPE,
+            payload={
+                "session_id": session_id,
+                "target_host": target_host,
+                "listener_port": listener_port,
+                "callback_ip": callback_ip,
+                "target_user": target_user,
+                "interactive": interactive,
+                "status": status,
+            },
+            canonical_key=f"shell:{session_id}",
+        )
