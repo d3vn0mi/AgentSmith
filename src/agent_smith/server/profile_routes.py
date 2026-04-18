@@ -29,6 +29,7 @@ class ProfileIn(BaseModel):
     username: str
     auth_type: str
     credential: str
+    callback_ip: Optional[str] = None
 
 
 class ProfilePatch(BaseModel):
@@ -38,6 +39,7 @@ class ProfilePatch(BaseModel):
     username: Optional[str] = None
     auth_type: Optional[str] = None
     credential: Optional[str] = None
+    callback_ip: Optional[str] = None
 
 
 class ProfileOut(BaseModel):
@@ -49,6 +51,7 @@ class ProfileOut(BaseModel):
     auth_type: str
     created_at: str
     updated_at: str
+    callback_ip: Optional[str] = None
 
 
 def _to_out(p) -> ProfileOut:
@@ -56,6 +59,7 @@ def _to_out(p) -> ProfileOut:
         id=p.id, name=p.name, host=p.host, port=p.port,
         username=p.username, auth_type=p.auth_type,
         created_at=p.created_at, updated_at=p.updated_at,
+        callback_ip=p.callback_ip,
     )
 
 
@@ -74,7 +78,9 @@ async def create_profile(body: ProfileIn):
         p = _registry.create_profile(
             name=body.name, host=body.host, port=body.port,
             username=body.username, auth_type=body.auth_type,
-            credential_enc=crypto.encrypt(body.credential))
+            credential_enc=crypto.encrypt(body.credential),
+            callback_ip=body.callback_ip,
+        )
     except RegistryError as exc:
         raise HTTPException(409, str(exc))
     return _to_out(p)
@@ -83,13 +89,13 @@ async def create_profile(body: ProfileIn):
 @router.patch("/{profile_id}", response_model=ProfileOut)
 async def update_profile(profile_id: str, body: ProfilePatch):
     assert _registry
+    patch_data = body.model_dump(exclude_unset=True)
     fields: dict = {}
-    for attr in ("name", "host", "port", "username", "auth_type"):
-        v = getattr(body, attr)
-        if v is not None:
-            fields[attr] = v
-    if body.credential is not None:
-        fields["credential_enc"] = crypto.encrypt(body.credential)
+    for attr in ("name", "host", "port", "username", "auth_type", "callback_ip"):
+        if attr in patch_data:
+            fields[attr] = patch_data[attr]
+    if "credential" in patch_data and patch_data["credential"] is not None:
+        fields["credential_enc"] = crypto.encrypt(patch_data["credential"])
     if not fields:
         p = _registry.get_profile(profile_id)
     else:

@@ -48,3 +48,39 @@ def test_delete_profile(client):
     resp = client.delete(f"/api/profiles/{pid}")
     assert resp.status_code == 204
     assert client.get("/api/profiles").json() == []
+
+
+def test_create_accepts_and_returns_callback_ip(client):
+    resp = client.post("/api/profiles", json={
+        "name": "kali1", "host": "h", "port": 22,
+        "username": "u", "auth_type": "password",
+        "credential": "pw", "callback_ip": "10.10.14.7",
+    })
+    assert resp.status_code == 201, resp.text
+    assert resp.json()["callback_ip"] == "10.10.14.7"
+
+    listed = client.get("/api/profiles").json()
+    assert listed[0]["callback_ip"] == "10.10.14.7"
+
+
+def test_patch_callback_ip_to_null(client):
+    pid = client.post("/api/profiles", json={
+        "name": "k2", "host": "h", "port": 22, "username": "u",
+        "auth_type": "password", "credential": "pw",
+        "callback_ip": "10.0.0.1",
+    }).json()["id"]
+    resp = client.patch(f"/api/profiles/{pid}",
+                         json={"callback_ip": None})
+    assert resp.status_code == 200
+    assert resp.json()["callback_ip"] is None
+
+
+def test_credential_never_returned_even_with_callback_ip(client):
+    client.post("/api/profiles", json={
+        "name": "k3", "host": "h", "port": 22, "username": "u",
+        "auth_type": "password", "credential": "secret-pw",
+        "callback_ip": "10.10.14.7",
+    })
+    body = client.get("/api/profiles").json()[0]
+    assert "credential" not in body
+    assert "credential_enc" not in body
