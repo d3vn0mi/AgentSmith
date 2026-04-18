@@ -132,3 +132,43 @@
 }
 .page-header h1 { font-size: 20px; font-weight: 600; }
 .page-actions { display: flex; gap: var(--space-2); }
+
+/* ---------- Mission detail ---------- */
+.mission-detail { display: flex; flex-direction: column; gap: var(--space-4); }
+.mission-header {
+    background: var(--color-bg-panel);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    padding: var(--space-4);
+}
+#mission-header-inner {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    grid-template-rows: auto auto;
+    gap: var(--space-3) var(--space-5);
+    align-items: center;
+}
+.mh-title { display: flex; align-items: center; gap: var(--space-3); grid-column: 1 / 2; }
+.mh-title h1 { font-size: 18px; font-weight: 600; }
+.mh-actions {
+    display: flex; gap: var(--space-2);
+    justify-self: end;
+    grid-column: 2 / 3;
+    grid-row: 1 / 2;
+}
+.mh-stats {
+    grid-column: 1 / 3;
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: var(--space-4);
+    padding-top: var(--space-3);
+    border-top: 1px solid var(--color-border);
+}
+.mh-stat { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.mh-stat-label {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--color-text-dim);
+}
+.tabpanel { outline: none; padding-top: var(--space-4); }

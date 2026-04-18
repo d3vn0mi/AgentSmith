@@ -4,6 +4,7 @@ import * as router from './router.js';
 import { renderShell } from './shell.js';
 import { renderLogin } from './login.js';
 import { renderMissionList } from './missions/list.js';
+import { renderMissionDetail } from './missions/detail.js';
 import { renderProfiles } from './profiles.js';
 import { h } from './dom.js';
 import './shortcuts.js';
@@ -35,6 +36,6 @@ router.register('login', renderLogin);
 router.register('missions', requireAuth(() => renderMissionList()));
 router.register('profiles',  requireAuth(() => renderProfiles()));
 router.register('playbooks', requireAuth(() => renderShell(h('div', { class: 'empty-state' }, 'Playbooks — Phase 4'))));
-router.register('mission',   requireAuth((id) => renderShell(h('div', { class: 'empty-state' }, `Mission ${id} — Phase 2`))));
+router.register('mission', requireAuth((id) => renderMissionDetail(id)));
 
 document.addEventListener('DOMContentLoaded', () => router.route());
