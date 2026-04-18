@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 from typing import Optional
 
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 
 def _now() -> str:
@@ -37,6 +37,7 @@ class KaliProfile:
     credential_enc: bytes
     created_at: str
     updated_at: str
+    callback_ip: str | None = None
 
 
 @dataclass(frozen=True)
@@ -128,6 +129,9 @@ class Registry:
                 CREATE INDEX idx_agents_mission  ON agents(mission_id);
             """)
 
+        if current < 2:
+            cur.execute("ALTER TABLE kali_profiles ADD COLUMN callback_ip TEXT")
+
         cur.execute(
             "INSERT OR REPLACE INTO schema_meta(key, value) VALUES ('version', ?)",
             (str(SCHEMA_VERSION),),
@@ -135,18 +139,27 @@ class Registry:
 
     # ---- KaliProfile CRUD ----
 
-    def create_profile(self, *, name, host, port, username, auth_type,
-                        credential_enc) -> KaliProfile:
+    def create_profile(
+        self,
+        *,
+        name: str,
+        host: str,
+        port: int,
+        username: str,
+        auth_type: str,
+        credential_enc: bytes,
+        callback_ip: str | None = None,
+    ) -> KaliProfile:
         pid = _new_id()
         now = _now()
         try:
             self._conn.execute(
                 """INSERT INTO kali_profiles
                    (id, name, host, port, username, auth_type, credential_enc,
-                    created_at, updated_at)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    created_at, updated_at, callback_ip)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (pid, name, host, port, username, auth_type,
-                 credential_enc, now, now),
+                 credential_enc, now, now, callback_ip),
             )
         except sqlite3.IntegrityError as exc:
             raise RegistryError(f"profile insert failed: {exc}") from exc
@@ -170,7 +183,8 @@ class Registry:
             if result is None:
                 raise RegistryError(f"profile {profile_id} not found")
             return result
-        allowed = {"name", "host", "port", "username", "auth_type", "credential_enc"}
+        allowed = {"name", "host", "port", "username", "auth_type",
+                    "credential_enc", "callback_ip"}
         bad = set(fields) - allowed
         if bad:
             raise RegistryError(f"cannot update fields: {bad}")
@@ -195,11 +209,14 @@ class Registry:
 
     @staticmethod
     def _row_to_profile(row: sqlite3.Row) -> KaliProfile:
+        keys = row.keys() if hasattr(row, "keys") else []
+        callback_ip = row["callback_ip"] if "callback_ip" in keys else None
         return KaliProfile(
             id=row["id"], name=row["name"], host=row["host"], port=row["port"],
             username=row["username"], auth_type=row["auth_type"],
             credential_enc=bytes(row["credential_enc"]),
             created_at=row["created_at"], updated_at=row["updated_at"],
+            callback_ip=callback_ip,
         )
 
     # ---- Mission CRUD ----
