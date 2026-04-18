@@ -46,6 +46,7 @@ export function renderShell(content) {
                 class: 'btn btn-ghost btn-icon btn-sm',
                 type: 'button',
                 'aria-label': 'Keyboard shortcuts',
+                // dispatch on `document` (not activeElement) — intentional: bypasses shortcuts.js's inTextEntry guard for an explicit user gesture
                 onclick: () => document.dispatchEvent(new KeyboardEvent('keydown', { key: '?' })),
             }, icon('keyboard')),
         ]),
