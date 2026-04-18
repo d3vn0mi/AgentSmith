@@ -60,7 +60,7 @@ class MissionController:
             payload={"name": self.playbook.name},
         ))
 
-        self._materialize_roots()
+        await self._materialize_roots()
 
         while self.scheduler.has_outstanding_work():
             task = self.scheduler.next_ready()
@@ -78,7 +78,7 @@ class MissionController:
         self._seq += 1
         return self._seq
 
-    def _materialize_roots(self) -> None:
+    async def _materialize_roots(self) -> None:
         for root in self.playbook.root_tasks:
             task_id = f"{root.task_type}#{self._next_seq()}"
             t = Task(
@@ -89,7 +89,19 @@ class MissionController:
                 produces=list(self.playbook.task_types[root.task_type].produces),
             )
             self.graph.add_task(t)
+            await self.bus.publish(Event(
+                event_type=EventType.TASK_CREATED,
+                mission_id=self.mission_id,
+                task_id=t.id,
+                payload={"task_type": t.task_type, "parent_task_id": None},
+            ))
             t.transition(TaskState.READY)
+            await self.bus.publish(Event(
+                event_type=EventType.TASK_READY,
+                mission_id=self.mission_id,
+                task_id=t.id,
+                payload={},
+            ))
 
     async def _run_task(self, task: Task) -> None:
         spec = self.playbook.task_types[task.task_type]
