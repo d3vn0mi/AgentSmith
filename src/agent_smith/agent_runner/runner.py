@@ -15,6 +15,19 @@ from agent_smith.control import crypto, registry
 from agent_smith.events import EventBus
 
 
+def _resolve_engine(mission) -> str:
+    """Return 'v2' if the mission's playbook loads via the v2 loader, else 'v1'."""
+    try:
+        from agent_smith.scenarios.loader import load_playbook
+        pb_path = Path("src/agent_smith/playbooks") / mission.playbook
+        if not pb_path.is_file():
+            return "v1"
+        load_playbook(pb_path)
+        return "v2"
+    except Exception:
+        return "v1"
+
+
 async def _build_and_run_agent(mission, profile, data_dir: Path, writer: EventWriter,
                                 bus: EventBus):
     """Wire SSHConnection + AgentSmith and run it.
@@ -73,6 +86,66 @@ async def _build_and_run_agent(mission, profile, data_dir: Path, writer: EventWr
         await llm.close()
 
 
+async def _run_v2_engine(mission, profile, data_dir: Path, writer) -> None:
+    """Run the mission via the v2 MissionController + V2EventBridge."""
+    from agent_smith.agent_runner.v2_bridge import V2EventBridge
+    from agent_smith.controller import MissionController
+    from agent_smith.event_stream.bus import EventBus as V2Bus
+    from agent_smith.scenarios.loader import load_playbook
+    from agent_smith.transport.ssh import SSHConnection
+
+    # Decrypt SSH credential. Use the same key/password logic as legacy.
+    from agent_smith.control import crypto as _crypto
+    secret = _crypto.decrypt(profile.credential_enc)
+    if profile.auth_type == "key":
+        keyfile = Path("/tmp/agent_kali_key")
+        keyfile.write_text(secret)
+        keyfile.chmod(0o600)
+        ssh = SSHConnection(
+            host=profile.host, user=profile.username,
+            key_path=str(keyfile), password=None,
+        )
+    else:
+        ssh = SSHConnection(
+            host=profile.host, user=profile.username,
+            key_path=None, password=secret,
+        )
+
+    pb_path = Path("src/agent_smith/playbooks") / mission.playbook
+    pb = load_playbook(pb_path)
+
+    # Pre-substitute ${TARGET} in root task args so the command template
+    # renders the correct IP. The v2 engine runs commands on the remote SSH
+    # host via asyncssh (no shell env forwarding), so substitution must
+    # happen locally before the command is built.
+    for root in pb.root_tasks:
+        for k, v in list(root.args.items()):
+            if isinstance(v, str):
+                root.args[k] = v.replace("${TARGET}", mission.target)
+
+    mission_dir = data_dir / "missions" / mission.id
+    bus = V2Bus()
+    bridge = V2EventBridge(bus, writer, mission_dir)
+    await bridge.start()
+
+    try:
+        await ssh.connect()
+        controller = MissionController(
+            mission_id=mission.id,
+            playbook=pb,
+            ssh=ssh,
+            run_dir=mission_dir / "v2",
+            bus=bus,
+        )
+        await controller.run()
+    finally:
+        try:
+            await ssh.disconnect()
+        except Exception:
+            pass
+        await bridge.stop()
+
+
 async def run(*, db_path: Path, data_dir: Path, mission_id: str, agent_id: str) -> None:
     r = registry.Registry(str(db_path))
     try:
@@ -96,16 +169,18 @@ async def run(*, db_path: Path, data_dir: Path, mission_id: str, agent_id: str) 
     signal.signal(signal.SIGTERM, _sigterm)
     signal.signal(signal.SIGINT, _sigterm)
 
-    bus = EventBus()
-    bridge = EventBridge(bus, writer, mission_dir)
-
     writer.emit("mission.started", {})
     try:
-        await bridge.start()
-        try:
-            await _build_and_run_agent(mission, profile, data_dir, writer, bus)
-        finally:
-            await bridge.stop()
+        if _resolve_engine(mission) == "v2":
+            await _run_v2_engine(mission, profile, data_dir, writer)
+        else:
+            bus = EventBus()
+            bridge = EventBridge(bus, writer, mission_dir)
+            await bridge.start()
+            try:
+                await _build_and_run_agent(mission, profile, data_dir, writer, bus)
+            finally:
+                await bridge.stop()
     except SystemExit:
         raise
     except BaseException as exc:

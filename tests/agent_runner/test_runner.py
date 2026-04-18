@@ -32,6 +32,8 @@ async def test_runner_emits_lifecycle_events(setup_env, monkeypatch):
     tmp_path, mission_id, agent_id, db_path = setup_env
     monkeypatch.setattr(runner, "_build_and_run_agent",
                         AsyncMock(return_value=None))
+    monkeypatch.setattr(runner, "_run_v2_engine",
+                        AsyncMock(return_value=None))
 
     await runner.run(db_path=db_path, data_dir=tmp_path,
                      mission_id=mission_id, agent_id=agent_id)
@@ -48,6 +50,8 @@ async def test_runner_emits_failed_on_exception(setup_env, monkeypatch):
     tmp_path, mission_id, agent_id, db_path = setup_env
     async def boom(*_a, **_kw): raise RuntimeError("bang")
     monkeypatch.setattr(runner, "_build_and_run_agent",
+                        AsyncMock(side_effect=boom))
+    monkeypatch.setattr(runner, "_run_v2_engine",
                         AsyncMock(side_effect=boom))
     with pytest.raises(SystemExit):
         await runner.run(db_path=db_path, data_dir=tmp_path,
