@@ -26,6 +26,8 @@ def _register_builtins() -> None:
     register(FfufParser())
     from agent_smith.executor.parsers.whatweb_parser import WhatwebParser
     register(WhatwebParser())
+    from agent_smith.executor.parsers.searchsploit_parser import SearchsploitParser
+    register(SearchsploitParser())
 
 
 _register_builtins()
