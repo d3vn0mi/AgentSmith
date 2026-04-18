@@ -172,3 +172,60 @@ document.addEventListener('DOMContentLoaded', () => {
     const btn = document.getElementById('logout-btn');
     if (btn) btn.addEventListener('click', () => logout());
 });
+
+/* ===== Profiles page ===== */
+ROUTES.profiles = () => renderProfiles();
+
+async function renderProfiles() {
+    const list = document.getElementById('profiles-list');
+    list.replaceChildren();
+    const resp = await apiRequest('/api/profiles');
+    if (!resp.ok) { list.appendChild(h('li', null, 'failed to load')); return; }
+    const profiles = await resp.json();
+    if (profiles.length === 0) {
+        list.appendChild(h('li', null, 'No profiles yet.'));
+    } else {
+        for (const p of profiles) {
+            const del = h('button', { onclick: () => deleteProfile(p.id) }, 'delete');
+            const li = h('li', null, [
+                `${p.name} — ${p.username}@${p.host}:${p.port} (${p.auth_type}) `,
+                del,
+            ]);
+            list.appendChild(li);
+        }
+    }
+    document.getElementById('profile-add').onclick = openProfileModal;
+}
+
+async function deleteProfile(id) {
+    if (!confirm('Delete this profile?')) return;
+    const resp = await apiRequest(`/api/profiles/${id}`, { method: 'DELETE' });
+    if (!resp.ok) {
+        const err = await resp.json().catch(() => ({}));
+        alert(err.detail || 'delete failed');
+        return;
+    }
+    renderProfiles();
+}
+
+function openProfileModal() {
+    const name = prompt('Profile name?'); if (!name) return;
+    const host = prompt('Host?'); if (!host) return;
+    const port = parseInt(prompt('Port (22)?', '22'), 10);
+    const username = prompt('Username?'); if (!username) return;
+    const auth_type = prompt('Auth type (key or password)?', 'key');
+    const credential = prompt(
+        auth_type === 'key'
+            ? 'Paste the SSH private key (full PEM):'
+            : 'Password:');
+    if (!credential) return;
+
+    apiRequest('/api/profiles', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, host, port, username, auth_type, credential }),
+    }).then(r => r.json().then(body => {
+        if (!r.ok) alert(body.detail || 'create failed');
+        else renderProfiles();
+    }));
+}
