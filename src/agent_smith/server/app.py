@@ -156,7 +156,25 @@ def create_control_plane_app(config: Config) -> FastAPI:
     data_dir = Path("data")
     recovery.reconcile(reg, spawner, data_dir=data_dir)
 
-    app = FastAPI(title="AgentSmith Control Plane")
+    import asyncio
+    from contextlib import asynccontextmanager
+
+    reconcile_interval = float(os.environ.get("RECONCILE_INTERVAL", "5"))
+
+    @asynccontextmanager
+    async def lifespan(_app):
+        task = asyncio.create_task(recovery.reconcile_forever(
+            reg, spawner, data_dir=data_dir, interval=reconcile_interval))
+        try:
+            yield
+        finally:
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
+
+    app = FastAPI(title="AgentSmith Control Plane", lifespan=lifespan)
 
     user_store = UserStore(config.auth.users_file)
     configure_auth_routes(

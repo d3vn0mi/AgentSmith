@@ -1,9 +1,12 @@
-"""Startup reconciliation: align DB with live agent containers."""
+"""Startup + periodic reconciliation: align DB with live agent containers."""
 from __future__ import annotations
 
-import json
+import asyncio
+import logging
 from pathlib import Path
 from typing import Optional
+
+import json
 
 from agent_smith.control.registry import Registry
 
@@ -40,3 +43,23 @@ def reconcile(registry: Registry, spawner, *, data_dir: Path) -> None:
         last = _last_event_type(events)
         mission_status = TERMINAL_EVENT_TO_STATUS.get(last, "failed")
         registry.set_mission_status(a.mission_id, mission_status, ended_at=True)
+
+
+async def reconcile_forever(
+    registry: Registry,
+    spawner,
+    *,
+    data_dir: Path,
+    interval: float = 5.0,
+) -> None:
+    """Run reconcile() on a periodic timer until cancelled.
+
+    Catches and logs exceptions so a single failure doesn't kill the loop.
+    """
+    logger = logging.getLogger("agent_smith.recovery")
+    while True:
+        try:
+            reconcile(registry, spawner, data_dir=data_dir)
+        except Exception:
+            logger.exception("reconcile tick failed")
+        await asyncio.sleep(interval)

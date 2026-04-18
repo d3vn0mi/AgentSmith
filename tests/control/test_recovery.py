@@ -74,3 +74,62 @@ def test_dead_container_unknown_event_marks_failed(db, tmp_path):
     spawner = MagicMock(); spawner.list_by_label.return_value = []
     recovery.reconcile(db, spawner, data_dir=tmp_path)
     assert db.get_mission(m.id).status == "failed"
+
+
+@pytest.mark.asyncio
+async def test_reconcile_forever_ticks_until_cancelled(db, tmp_path):
+    """Periodic loop picks up a container that vanishes between ticks."""
+    import asyncio
+    m, a = _mk_running_mission(db)
+    _write_event_log(tmp_path, m.id, "mission.completed")
+
+    spawner = MagicMock()
+    # Tick 1: still alive. Tick 2+: gone.
+    from agent_smith.control.spawner import LiveAgent
+    spawner.list_by_label.side_effect = [
+        [LiveAgent(container_id="cid-1", container_name="n",
+                    mission_id=m.id, agent_id=a.id)],
+        [],  # second tick: container vanished
+        [],  # any further ticks
+        [],
+    ]
+
+    task = asyncio.create_task(
+        recovery.reconcile_forever(db, spawner, data_dir=tmp_path, interval=0.02)
+    )
+    await asyncio.sleep(0.1)
+    task.cancel()
+    try:
+        await task
+    except asyncio.CancelledError:
+        pass
+
+    assert db.get_mission(m.id).status == "completed"
+    assert db.get_agent(a.id).status == "exited"
+
+
+@pytest.mark.asyncio
+async def test_reconcile_forever_survives_exceptions(db, tmp_path):
+    """A raising reconcile on one tick does not break the loop."""
+    import asyncio
+    m, a = _mk_running_mission(db)
+    _write_event_log(tmp_path, m.id, "mission.completed")
+
+    spawner = MagicMock()
+    spawner.list_by_label.side_effect = [
+        RuntimeError("transient docker error"),
+        [],  # second tick recovers
+        [],
+    ]
+
+    task = asyncio.create_task(
+        recovery.reconcile_forever(db, spawner, data_dir=tmp_path, interval=0.02)
+    )
+    await asyncio.sleep(0.1)
+    task.cancel()
+    try:
+        await task
+    except asyncio.CancelledError:
+        pass
+
+    assert db.get_mission(m.id).status == "completed"
