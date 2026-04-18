@@ -229,3 +229,60 @@ function openProfileModal() {
         else renderProfiles();
     }));
 }
+
+/* ===== Missions list ===== */
+ROUTES.missions = () => renderMissionsList();
+
+async function renderMissionsList() {
+    const list = document.getElementById('missions-list');
+    list.replaceChildren();
+    const resp = await apiRequest('/api/missions');
+    if (!resp.ok) { list.appendChild(h('li', null, 'failed')); return; }
+    const missions = await resp.json();
+    if (missions.length === 0) {
+        list.appendChild(h('li', null, 'No missions yet.'));
+    } else {
+        for (const m of missions) {
+            const a = h('a', { href: `#mission/${m.id}` },
+                `[${m.status}] ${m.name} — ${m.target} (${m.playbook})`);
+            list.appendChild(h('li', null, a));
+        }
+    }
+    document.getElementById('mission-new').onclick = openMissionCreate;
+}
+
+async function openMissionCreate() {
+    const [profiles, playbooks] = await Promise.all([
+        apiRequest('/api/profiles').then(r => r.json()),
+        apiRequest('/api/playbooks').then(r => r.json()),
+    ]);
+    if (profiles.length === 0) {
+        alert('Create a Kali profile first.');
+        location.hash = 'profiles';
+        return;
+    }
+    if (playbooks.length === 0) {
+        alert('No playbooks on disk.');
+        return;
+    }
+
+    const name = prompt('Mission name?'); if (!name) return;
+    const target = prompt('Target IP/host?'); if (!target) return;
+    const profileName = prompt('Kali profile?\n'
+        + profiles.map(p => ` - ${p.name}`).join('\n'), profiles[0].name);
+    const profile = profiles.find(p => p.name === profileName);
+    if (!profile) { alert('unknown profile'); return; }
+    const playbook = prompt('Playbook?\n'
+        + playbooks.map(p => ` - ${p.filename}`).join('\n'),
+        playbooks[0].filename);
+
+    const resp = await apiRequest('/api/missions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, target, playbook,
+                                 kali_profile_id: profile.id }),
+    });
+    const body = await resp.json();
+    if (!resp.ok) { alert(body.detail || 'failed'); return; }
+    location.hash = `mission/${body.id}`;
+}
