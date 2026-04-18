@@ -396,3 +396,16 @@ body {
 .v2-item { text-align: left; padding: 0.5em; cursor: pointer; background: #222; color: #ddd; border: 1px solid #333; }
 .v2-item:hover { background: #333; }
 #v2-graph-json { max-height: 400px; overflow: auto; background: #111; color: #ddd; padding: 0.5em; }
+
+.event-list { height: 60vh; overflow-y: auto; font-family: var(--font-mono); font-size: 0.85em; border: 1px solid var(--border); }
+.event-row { display: grid; grid-template-columns: 160px 180px 1fr; gap: 1em; padding: 2px 6px; cursor: pointer; }
+.event-row:hover { background: var(--bg-panel); }
+.ev-ts   { color: var(--text-dim); }
+.ev-type { color: var(--accent-cyan); }
+.ev-body { color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tail-banner { position: sticky; bottom: 0; background: var(--accent-blue); color: #fff; padding: 0.5em; text-align: center; cursor: pointer; }
+.filter-bar { padding: 0.5em; border-bottom: 1px solid var(--border); display: flex; gap: 1em; }
+.event-drawer { position: fixed; top: 0; right: 0; width: 40vw; height: 100vh; background: var(--bg-secondary); padding: 1em; overflow-y: auto; box-shadow: -2px 0 8px rgba(0,0,0,0.3); z-index: 1000; }
+.event-drawer pre { white-space: pre-wrap; word-break: break-all; }
+.tab-active { background: var(--accent-blue); color: #fff; }
+.ev-focus { background: var(--bg-input); }

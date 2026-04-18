@@ -324,3 +324,229 @@ class EventBuffer {
     }
     clear() { this.items = []; this.seen.clear(); }
 }
+
+/* ===== Mission detail ===== */
+ROUTES.mission = (id) => renderMissionDetail(id);
+
+const detailState = {
+    missionId: null,
+    buffer: null,
+    ws: null,
+    filter: new Set(),
+    autoTail: true,
+    pendingNew: 0,
+};
+
+function filterKey(id) { return `filter:${id}`; }
+
+function tearDownDetail() {
+    if (detailState.ws) {
+        try { detailState.ws.close(1000); } catch (_) {}
+    }
+    detailState.ws = null;
+    detailState.buffer = null;
+    detailState.missionId = null;
+    detailState.autoTail = true;
+    detailState.pendingNew = 0;
+}
+
+function buildLiveTab(id) {
+    const tab = document.getElementById('mission-tab-live');
+    tab.replaceChildren();
+
+    const bar = h('div', { class: 'filter-bar' });
+    for (const t of ['thinking', 'tool', 'evidence', 'phase', 'error']) {
+        const cb = h('input', { type: 'checkbox', dataset: { filter: t } });
+        cb.checked = detailState.filter.size === 0 || detailState.filter.has(t);
+        cb.onchange = () => {
+            detailState.filter = new Set(
+                [...tab.querySelectorAll('[data-filter]')]
+                    .filter(b => b.checked)
+                    .map(b => b.dataset.filter));
+            localStorage.setItem(
+                filterKey(id), JSON.stringify([...detailState.filter]));
+            renderEventList();
+        };
+        bar.appendChild(h('label', null, [cb, ' ' + t]));
+    }
+    tab.appendChild(bar);
+
+    const list = h('div', { id: 'event-list', class: 'event-list' });
+    tab.appendChild(list);
+
+    const banner = h('div', {
+        id: 'tail-banner', class: 'tail-banner', hidden: true,
+        onclick: () => {
+            detailState.autoTail = true;
+            banner.hidden = true;
+            detailState.pendingNew = 0;
+            renderEventList();
+            list.scrollTop = list.scrollHeight;
+        },
+    }, ['↓ ', h('span', { id: 'tail-count' }, '0'), ' new — click to jump']);
+    tab.appendChild(banner);
+
+    list.addEventListener('scroll', () => {
+        const atBottom =
+            list.scrollTop + list.clientHeight >= list.scrollHeight - 4;
+        detailState.autoTail = atBottom;
+        if (atBottom) {
+            detailState.pendingNew = 0;
+            banner.hidden = true;
+        }
+        if (list.scrollTop === 0) loadOlderEvents(id);
+    });
+}
+
+function eventMatchesFilter(e) {
+    if (detailState.filter.size === 0) return true;
+    if (e.type.startsWith('agent.thinking')) return detailState.filter.has('thinking');
+    if (e.type.startsWith('tool.'))           return detailState.filter.has('tool');
+    if (e.type.startsWith('evidence.'))       return detailState.filter.has('evidence');
+    if (e.type.startsWith('phase.'))          return detailState.filter.has('phase');
+    if (e.type.includes('failed'))            return detailState.filter.has('error');
+    return true;
+}
+
+function renderEventList() {
+    const list = document.getElementById('event-list');
+    if (!list) return;
+    const items = detailState.buffer.items.filter(eventMatchesFilter);
+    list.replaceChildren();
+    const frag = document.createDocumentFragment();
+    for (const e of items) {
+        const row = h('div', {
+            class: 'event-row', dataset: { seq: String(e.seq) },
+            onclick: () => openEventDrawer(e),
+        }, [
+            h('span', { class: 'ev-ts' },
+               e.ts.replace('T', ' ').replace('Z', '')),
+            h('span', { class: 'ev-type' }, e.type),
+            h('span', { class: 'ev-body' },
+               JSON.stringify(e.data).slice(0, 160)),
+        ]);
+        frag.appendChild(row);
+    }
+    list.appendChild(frag);
+    if (detailState.autoTail) list.scrollTop = list.scrollHeight;
+}
+
+async function renderMissionDetail(id) {
+    if (detailState.missionId && detailState.missionId !== id) tearDownDetail();
+    detailState.missionId = id;
+    detailState.buffer = new EventBuffer({ capacity: 500 });
+    try {
+        detailState.filter = new Set(
+            JSON.parse(localStorage.getItem(filterKey(id)) || '[]'));
+    } catch (_) { detailState.filter = new Set(); }
+
+    const resp = await apiRequest(`/api/missions/${id}`);
+    if (!resp.ok) { alert('mission not found'); return; }
+    const mission = await resp.json();
+    document.getElementById('mission-title').replaceChildren(
+        document.createTextNode(mission.name));
+    document.getElementById('mission-header').replaceChildren(
+        document.createTextNode(
+            `[${mission.status}] ${mission.target} — ${mission.playbook}`));
+
+    const tabs = ['live', 'graph', 'evidence', 'history'];
+    const tabLoaders = {
+        live:     () => buildLiveTab(id),
+        graph:    () => (typeof loadGraphTab === 'function') && loadGraphTab(id),
+        evidence: () => (typeof loadEvidenceTab === 'function') && loadEvidenceTab(id),
+        history:  () => (typeof loadHistoryTab === 'function') && loadHistoryTab(id),
+    };
+    tabs.forEach(t => {
+        const btn = document.querySelector(`#mission-tabs [data-tab="${t}"]`);
+        btn.onclick = () => {
+            tabs.forEach(x =>
+                document.getElementById(`mission-tab-${x}`).hidden = (x !== t));
+            document.querySelectorAll('#mission-tabs button[data-tab]')
+                .forEach(b => b.classList.toggle('tab-active', b === btn));
+            tabLoaders[t]();
+        };
+    });
+
+    document.getElementById('mission-export').onclick = () => {
+        window.location.href = `/api/missions/${id}/report.md`;
+    };
+    document.getElementById('mission-stop').onclick = () => {
+        apiRequest(`/api/missions/${id}/stop`, { method: 'POST' });
+    };
+
+    buildLiveTab(id);
+
+    const events = await (await apiRequest(
+        `/api/missions/${id}/events?limit=200`)).json();
+    detailState.buffer.prepend(events);
+    const initialNewest = detailState.buffer.newestSeq;
+    renderEventList();
+    openMissionWS(id, initialNewest == null ? -1 : initialNewest);
+}
+
+async function loadOlderEvents(id) {
+    if (!detailState.buffer) return;
+    const oldest = detailState.buffer.oldestSeq;
+    if (oldest == null || oldest === 0) return;
+    const resp = await apiRequest(
+        `/api/missions/${id}/events?before=${oldest}&limit=200`);
+    if (!resp.ok) return;
+    const older = await resp.json();
+    if (older.length === 0) return;
+    const asc = [...older].sort((a, b) => a.seq - b.seq);
+    const list = document.getElementById('event-list');
+    const prevH = list.scrollHeight;
+    detailState.buffer.prepend(asc);
+    renderEventList();
+    list.scrollTop = list.scrollHeight - prevH;
+}
+
+function openEventDrawer(e) {
+    const existing = document.getElementById('event-drawer');
+    if (existing) existing.remove();
+    const closeBtn = h('button', {
+        onclick: (ev) => ev.currentTarget.parentElement.parentElement.remove(),
+    }, '✕');
+    const header = h('header', null, [
+        h('strong', null, `seq ${e.seq} · ${e.type}`),
+        closeBtn,
+    ]);
+    const pre = h('pre');
+    pre.textContent = JSON.stringify(e, null, 2);
+    const drawer = h('aside', { id: 'event-drawer', class: 'event-drawer' },
+                     [header, pre]);
+    document.body.appendChild(drawer);
+}
+
+function openMissionWS(id, sinceSeq) {
+    const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const token = encodeURIComponent(state.token);
+    const url = `${proto}//${location.host}/ws/missions/${id}?since=${sinceSeq}&token=${token}`;
+    const ws = new WebSocket(url);
+    detailState.ws = ws;
+
+    ws.onmessage = (m) => {
+        const e = JSON.parse(m.data);
+        const added = detailState.buffer.append(e);
+        if (!added) return;
+        if (detailState.autoTail) {
+            renderEventList();
+        } else {
+            detailState.pendingNew++;
+            const banner = document.getElementById('tail-banner');
+            const count = document.getElementById('tail-count');
+            if (count) count.textContent = String(detailState.pendingNew);
+            if (banner) banner.hidden = false;
+        }
+    };
+
+    ws.onclose = () => {
+        if (detailState.missionId !== id) return;
+        setTimeout(() => {
+            if (detailState.missionId === id) {
+                openMissionWS(id, detailState.buffer.newestSeq ?? -1);
+            }
+        }, 1500);
+    };
+    ws.onerror = () => {};
+}
