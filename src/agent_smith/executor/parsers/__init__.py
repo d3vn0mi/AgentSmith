@@ -24,6 +24,8 @@ def _register_builtins() -> None:
     register(NmapXmlParser())
     from agent_smith.executor.parsers.ffuf_parser import FfufParser
     register(FfufParser())
+    from agent_smith.executor.parsers.whatweb_parser import WhatwebParser
+    register(WhatwebParser())
 
 
 _register_builtins()
