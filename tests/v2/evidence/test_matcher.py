@@ -63,3 +63,16 @@ def test_invalid_syntax_raises():
         parse_predicate("OpenPort{service ssh}")
     with pytest.raises(ValueError):
         parse_predicate("")
+
+
+def test_multi_constraint_with_regex_containing_comma():
+    """Regex with a comma inside must not cause the multi-constraint splitter
+    to split inside the regex body."""
+    pred = parse_predicate("WebEndpoint{title: ~/foo,bar/i, status: 200}")
+    # Must have exactly two constraints (title regex + status equality)
+    assert set(pred.constraints.keys()) == {"title", "status"}
+    from agent_smith.evidence.facts import WebEndpoint
+    assert pred.matches(WebEndpoint.new(url="x", status=200, title="foo,bar"))
+    assert pred.matches(WebEndpoint.new(url="x", status=200, title="FOO,BAR"))  # case-insensitive
+    assert not pred.matches(WebEndpoint.new(url="x", status=200, title="foobar"))
+    assert not pred.matches(WebEndpoint.new(url="x", status=404, title="foo,bar"))

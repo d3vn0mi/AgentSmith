@@ -105,6 +105,9 @@ def _split_top_level(s: str, sep: str) -> list[str]:
         if c == "~" and i + 1 < len(s) and s[i + 1] == "/":
             in_regex = True
             buf.append(c)
+            buf.append(s[i + 1])
+            i += 2
+            continue
         elif in_regex and c == "/":
             in_regex = False
             buf.append(c)
