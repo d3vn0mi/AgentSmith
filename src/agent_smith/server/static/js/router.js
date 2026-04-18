@@ -21,6 +21,8 @@ export function route() {
     const renderer = routes.get(name);
     if (!renderer) { navigate('missions'); return; }
     renderer(...args);
+    const surface = document.getElementById('surface');
+    if (surface) surface.focus({ preventScroll: true });
 }
 
 window.addEventListener('hashchange', route);

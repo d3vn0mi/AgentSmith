@@ -46,3 +46,17 @@ button, input, textarea, select { font: inherit; color: inherit; }
 .mono  { font-family: var(--font-mono); }
 .dim   { color: var(--color-text-dim); }
 .muted { color: var(--color-text-secondary); }
+
+/* ---------- Skip link ---------- */
+.skip-link {
+    position: absolute;
+    top: -40px;
+    left: var(--space-3);
+    background: var(--color-state-info);
+    color: #fff;
+    padding: 6px 12px;
+    border-radius: var(--radius-md);
+    z-index: var(--z-toast);
+    transition: top var(--motion-fast);
+}
+.skip-link:focus { top: var(--space-3); }
