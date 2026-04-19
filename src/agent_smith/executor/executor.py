@@ -9,6 +9,7 @@ Responsibilities:
 """
 from __future__ import annotations
 
+import re
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -34,6 +35,8 @@ class TaskExecutionResult:
 
 CommandBuilder = Callable[[TaskTypeSpec, dict[str, Any]], str]
 
+_CMD_TEMPLATE_RE = re.compile(r"\{(\w+)\}")
+
 
 def default_command_builder(spec: TaskTypeSpec, args: dict[str, Any]) -> str:
     """Render args_template keys as --key=value pairs, using already-resolved args.
@@ -43,11 +46,16 @@ def default_command_builder(spec: TaskTypeSpec, args: dict[str, Any]) -> str:
     literal values. The template keys in spec.args_template identify which
     args are meaningful; values come from `args`.
 
-    If spec.command_template is set, it is rendered via str.format(**args)
-    and returned directly instead of the default --key=value style.
+    If spec.command_template is set, it is rendered via a regex substitution
+    that only replaces {word_char_key} patterns present in args. All other
+    curly-brace patterns (awk scripts, brace expansions, dotted placeholders)
+    are left verbatim.
     """
     if spec.command_template:
-        return spec.command_template.format(**args)
+        def _sub(m: re.Match) -> str:
+            key = m.group(1)
+            return str(args[key]) if key in args else m.group(0)
+        return _CMD_TEMPLATE_RE.sub(_sub, spec.command_template)
     parts: list[str] = [spec.tool]
     for key in spec.args_template.keys():
         if key in args:
