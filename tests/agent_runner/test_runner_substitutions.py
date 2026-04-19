@@ -55,3 +55,52 @@ def test_callback_ip_uses_profile_value_when_set():
     class _P:
         callback_ip = "10.10.14.7"
     assert _build_substitutions(_M(), _P())["${CALLBACK_IP}"] == "10.10.14.7"
+
+
+from agent_smith.agent_runner.runner import _render_value
+
+
+def test_render_value_substitutes_fixed_placeholders():
+    out = _render_value(
+        "target=${TARGET} id=${MISSION_SHORT_ID}",
+        {"${TARGET}": "10.0.0.1", "${MISSION_SHORT_ID}": "abc12345"},
+        {},
+    )
+    assert out == "target=10.0.0.1 id=abc12345"
+
+
+def test_render_value_resolves_agent_config_key():
+    out = _render_value(
+        "cgi=${AGENT_CONFIG:cgi_path}",
+        {},
+        {"cgi_path": "/cgi-bin/user.sh"},
+    )
+    assert out == "cgi=/cgi-bin/user.sh"
+
+
+def test_render_value_agent_config_missing_key_becomes_empty():
+    out = _render_value(
+        "cgi=${AGENT_CONFIG:not_there}",
+        {},
+        {"cgi_path": "/x"},
+    )
+    assert out == "cgi="
+
+
+def test_render_value_mixes_fixed_and_agent_config():
+    out = _render_value(
+        "http://${TARGET}:${AGENT_CONFIG:port}${AGENT_CONFIG:cgi_path}",
+        {"${TARGET}": "10.0.0.1"},
+        {"port": "80", "cgi_path": "/cgi-bin/user.sh"},
+    )
+    assert out == "http://10.0.0.1:80/cgi-bin/user.sh"
+
+
+def test_render_value_agent_config_values_stringified():
+    """Non-string values in agent_config get str()'d."""
+    out = _render_value(
+        "port=${AGENT_CONFIG:port}",
+        {},
+        {"port": 4444},
+    )
+    assert out == "port=4444"

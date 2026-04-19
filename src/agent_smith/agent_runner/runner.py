@@ -10,11 +10,34 @@ import traceback
 from pathlib import Path
 
 import hashlib
+import re
 
 from agent_smith.agent_runner.bridge import EventBridge
 from agent_smith.agent_runner.event_writer import EventWriter
 from agent_smith.control import crypto, registry
 from agent_smith.events import EventBus
+
+
+_AGENT_CFG_RE = re.compile(r"\$\{AGENT_CONFIG:([^}]+)\}")
+
+
+def _render_value(
+    value: str,
+    substitutions: dict[str, str],
+    agent_config: dict,
+) -> str:
+    """Render a playbook root-task arg string.
+
+    Applies fixed placeholder substitutions (e.g. ${TARGET}) first, then
+    resolves any ${AGENT_CONFIG:<key>} patterns against mission.agent_config.
+    Missing keys render to the empty string (matches the ${CALLBACK_IP}
+    semantics when no profile override is set).
+    """
+    for ph, val in substitutions.items():
+        value = value.replace(ph, val)
+    return _AGENT_CFG_RE.sub(
+        lambda m: str(agent_config.get(m.group(1), "")), value
+    )
 
 
 def _build_substitutions(mission, profile) -> dict[str, str]:
@@ -154,12 +177,11 @@ async def _run_v2_engine(mission, profile, data_dir: Path, writer) -> None:
     # host via asyncssh (no shell env forwarding), so substitution must
     # happen locally before the command is built.
     SUBSTITUTIONS = _build_substitutions(mission, profile)
+    agent_config = mission.agent_config or {}
     for root in pb.root_tasks:
         for k, v in list(root.args.items()):
             if isinstance(v, str):
-                for ph, val in SUBSTITUTIONS.items():
-                    v = v.replace(ph, val)
-                root.args[k] = v
+                root.args[k] = _render_value(v, SUBSTITUTIONS, agent_config)
 
     mission_dir = data_dir / "missions" / mission.id
     bus = V2Bus()
